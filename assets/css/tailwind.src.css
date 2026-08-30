@@ -1,0 +1,123 @@
+@source "../../partials";
+@source "../../assets/js";
+@source "../../";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-on-accent: var(--on-accent);
+  --color-shell: var(--shell);
+  --color-shell-hover: var(--shell-hover);
+  --color-shell-text: var(--shell-text);
+  --color-bg-page: var(--bg-page);
+  --color-bg-surface: var(--bg-surface);
+  --color-app-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-white-8: rgba(255, 255, 255, 0.08);
+  --text-9px: 9px;
+  --text-9-5px: 9.5px;
+  --text-10px: 10px;
+  --text-11px: 11px;
+  --text-11-5px: 11.5px;
+  --text-12-5px: 12.5px;
+  --text-md: 12.5px;
+  --text-13px: 13px;
+  --text-15px: 15px;
+  --text-44px: 44px;
+  --color-draft: var(--st-draft);
+  --color-pending: var(--st-pending);
+  --color-verified: var(--st-verified);
+  --color-approved: var(--st-approved);
+  --color-dispatched: var(--st-dispatched);
+  --color-on-going: var(--st-on-going);
+  --color-completed: var(--st-completed);
+  --color-cancelled: var(--st-cancelled);
+  --color-rejected: var(--st-rejected);
+  --color-rescheduled: var(--st-rescheduled);
+}
+
+/* Font face definitions are in app.css; we mirror the font family */
+@layer base {
+  @font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    src: url('../fonts/pjs/pjs-400.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+    src: url('../fonts/pjs/pjs-500.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+    src: url('../fonts/pjs/pjs-600.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+    src: url('../fonts/pjs/pjs-700.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'Plus Jakarta Sans';
+    font-weight: 800;
+    font-style: normal;
+    font-display: swap;
+    src: url('../fonts/pjs/pjs-800.woff2') format('woff2');
+  }
+}
+
+/* Color tokens – matched to app.css variables */
+@layer base {
+  :root {
+    --shell: #0B1F3A;
+    --shell-hover: #13294B;
+    --shell-text: #C7D4E8;
+    --accent: #38BDF8;
+    --accent-strong: #0284C7;
+    --on-accent: #04121F;
+    --bg-page: #F6F8FB;
+    --bg-surface: #FFFFFF;
+    --text: #0F172A;
+    --text-muted: #64748B;
+    --border: #E2E8F0;
+    --st-draft: #94A3B8;
+    --st-pending: #D97706;
+    --st-approved: #2563EB;
+    --st-assigned: #7C3AED;
+    --st-ready: #0EA5E9;
+    --st-progress: #0891B2;
+    --st-dest: #7C3AED;
+    --st-returning: #4F46E5;
+    --st-returned: #0D9488;
+    --st-certify: #EA580C;
+    --st-completed: #16A34A;
+    --st-rejected: #DC2626;
+    --st-cancelled: #64748B;
+    --radius: 8px;
+    --radius-lg: 10px;
+    --row-h: 36px;
+  }
+  html[data-theme="dark"] {
+    --shell: #081120;
+    --shell-hover: #101B31;
+    --shell-text: #9DB0CC;
+    --bg-page: #0B1220;
+    --bg-surface: #111C2E;
+    --text: #E2E8F0;
+    --text-muted: #94A3B8;
+    --border: #1E293B;
+  }
+}

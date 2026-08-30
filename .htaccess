@@ -1,0 +1,20 @@
+# NAAP GSD Trip Ticket — root
+Options -Indexes
+DirectoryIndex index.php auth/login.php
+
+# Block web access to internal layers entirely
+<FilesMatch "\.(sql|md|lock|json)$">
+    Require all denied
+</FilesMatch>
+
+# Credential sheet must never be served
+<Files "accounts">
+    Require all denied
+</Files>
+
+# Baseline security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

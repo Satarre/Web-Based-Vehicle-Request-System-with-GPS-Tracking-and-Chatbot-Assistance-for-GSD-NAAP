@@ -1,0 +1,9 @@
+node_modules/
+npm-debug.log
+uploads/
+*.log
+.playwright-mcp/
+opencode.json
+.mcp.json
+*.png
+!assets/img/*.png
