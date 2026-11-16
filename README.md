@@ -2,7 +2,7 @@
 
 Official vehicle request and tracking system for the **National Aviation Academy of the Philippines — General Services Division (GSD)**. Replaces manual paper-based trip tickets with a fully digital workflow: request submission, multi-level approval, GPS-tracked dispatch, post-trip reporting, and audit logging.
 
-**Stack:** PHP 8.2 · MariaDB 10.4 · Tailwind CSS v4 · Leaflet/OSM · XAMPP (Windows)
+**Stack:** PHP 8.2 · MariaDB 10.4 · Tailwind CSS v4 · Google Maps JS + Places · PHPMailer (Composer) · XAMPP (Windows)
 
 ---
 
@@ -12,40 +12,92 @@ Official vehicle request and tracking system for the **National Aviation Academy
 ┌─────────────────────────────────────────────────────────┐
 │                   Browser (MPA)                         │
 │  role folders (personnel/, staff/, driver/, guard/,     │
-│  director/, mis/) + shared (ticket.php, tracking.php,  │
-│  flags.php)                                             │
+│  director/, mis/, account/) + shared (ticket.php,       │
+│  tracking.php, tracker.php, flags.php, file.php)        │
 │  └─ partials shell (layout_head → sidebar → topbar)     │
-│  └─ mutations via fetch() → assets/js/api.js (CSRF)    │
+│  └─ mutations via fetch() → assets/js/api.js (CSRF)     │
+│  └─ live updates via SSE (assets/js/SSEClient.js)       │
 └──────────────────────┬──────────────────────────────────┘
                        │ POST (JSON/form)
 ┌──────────────────────▼──────────────────────────────────┐
 │  api/trips.php    lifecycle actions (all roles)         │
 │  api/admin.php    MIS mutations (role 1 only)           │
-│  api/account.php  self-service profile/password         │
-│  api/gps/*        device ingestion (Bearer auth)        │
+│  api/account.php  self-service profile/password/MFA     │
+│  api/chatbot.php  rule-based assistant                  │
+│  api/sse.php      notification stream (Server-Sent)     │
+│  api/calendar.php · api/badge_counts.php                │
+│  api/notifications_mark_read.php                        │
+│  api/gps/*        ingestion (Bearer) + tracker (session)│
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────┐
 │  core/ kernel                                           │
 │  Auth (RBAC + session)  TripState (state machine)       │
-│  ConflictChecker        TicketNumber (DTT-YYYY-####)    │
+│  ConflictChecker        TicketNumber (NAAP-MN-YYYY-####)│
 │  FlagEvaluator          Gps (ingest + geofence)         │
-│  Audit  Csrf  Settings  TOTP                           │
+│  RouteService           RoadsService                    │
+│  NotificationService    SecurityEvent                   │
+│  SecurityNotificationService  RateLimiter               │
+│  PasswordPolicy  MfaService  TotpService  OtpService    │
+│  MailService  ChatbotAssistant  ChatbotMatcher          │
+│  TripGuard  Audit  Csrf  Settings  TOTP                 │
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────┐
-│  MariaDB  naap_mn_vts  (17 tables, 3 audit triggers)   │
-│  database/schema.sql · seed.sql                         │
+│  MariaDB  naap_mn_vts  (26 tables, 3 audit triggers)    │
+│  database/schema.sql · seed*.sql · migrations/          │
 └─────────────────────────────────────────────────────────┘
 
 External:
   GPS devices → POST /api/gps/locations.php (Bearer)
+  SMTP mail   → core/MailService.php (PHPMailer)
   Cron (every 5 min) → scripts/evaluate_flags.php (CLI)
 ```
 
 - **No framework** — vanilla PHP with `core/` kernel classes and PDO prepared statements.
 - **MPA + progressive JS** — pages render server-side; all mutations go through centralized JSON API gateways.
-- **Autoloader** — `spl_autoload_register` loads `core/` and `gps/` classes on demand.
+- **Autoloader** — Composer (`vendor/autoload.php`, PHPMailer) plus `spl_autoload_register` for `core/` and `gps/` classes.
+
+### Project Structure
+
+```
+NAAP_MN_VTS_Capstone/
+├── index.php               # entry: redirects to role dashboard or login
+├── ticket.php              # ticket detail + workflow actions (all roles)
+├── tracking.php            # live map (Google Maps, polls api/gps/latest.php)
+├── tracker.php             # GPS TRACKER (role 7) device status page
+├── flags.php               # shared flag desk (MIS + Dispatcher)
+├── file.php                # authenticated request-letter streamer (uploads/)
+├── log_client_error.php    # sink for assets/js/error_logger.js
+├── api/                    # JSON gateways (trips, admin, account, chatbot,
+│                           # sse, calendar, badge_counts, notifications_mark_read)
+│   └── gps/                # locations.php (Bearer) · latest.php · me.php · tracker_ping.php
+├── assets/
+│   ├── css/                # tailwind.src.css → tailwind.css (build) + app.css (semantic classes)
+│   ├── js/                 # api.js, ui.js, idle.js, SSEClient.js, TrackingClient.js, …
+│   │   ├── pages/          # one script per page/feature
+│   │   └── vendor/         # chart, xlsx, jszip, qrcode, flatpickr, docx-preview
+│   └── img/                # webp logos/hero images + favicon
+├── auth/                   # login/logout, MFA challenge + setup, password/email OTP flows
+├── account/                # profile, MFA, own audit trail
+├── personnel/              # role 6: request form, my requests, history, feedback
+├── staff/                  # role 3: dashboard, trips, assignments
+├── driver/                 # role 4: dashboard, post-trip report
+├── guard/                  # role 5: desk, history
+├── director/               # role 2: dashboard, approvals, trips, vehicles, reports, feedback, chatbot
+├── mis/                    # role 1: dashboard, accounts, fleet, reports, audit, settings, feedback, chatbot
+├── core/                   # kernel classes (Auth, TripState, Gps, FlagEvaluator, services)
+├── partials/               # layout shell, sidebar, topbar, calendar, chatbox, settings drawer, icons
+├── config/                 # config.php + secrets.example.php (secrets.php is git-ignored)
+├── database/               # schema.sql, seed.sql, seed_demo.sql, migrations/, schemaDiagram.sql
+├── docs/                   # ARCHITECTURE, DEVICE_API, MANUALS, DEPLOY_HOSTINGER, screenshots
+├── hardware/               # esp32_neo7m_gps/ Arduino sketch for the GPS unit
+├── scripts/                # evaluate_flags.php (cron), backfills, seeds, class_audit, deploy_check
+├── tests/                  # run.php — dependency-free acceptance suite
+├── uploads/                # runtime request letters (git-ignored, denied by .htaccess)
+├── INSTRUCTIONS/ · README/ · SYSTEM MANUAL/   # standalone deployment docs + package SQL
+└── HANDOFF.md · HANDOFF_MIGRATION.md · IMPLEMENT.md   # project notes
+```
 
 ### Key Design Decisions
 
@@ -53,7 +105,7 @@ External:
 |---|---|
 | Single `TripState` authority | Prevents illegal status transitions; `can()` is the only gate |
 | `ConflictChecker` overlap test | Prevents double-booking vehicles/drivers for overlapping windows |
-| `DTT-YYYY-####` numbering | Per-year sequence with unique-key retry; no counter table needed |
+| `NAAP-MN-YYYY-####` numbering | Per-year sequence with unique-key retry; no counter table needed |
 | GPS Bearer token (SHA-256) | Raw token shown once at registration; only hash stored |
 | Flag evaluator (CLI cron) | Decoupled from web requests; safe to run concurrently |
 | Audit triggers + `Audit::log()` | Dual-layer logging — PHP for app events, DB triggers for status/vehicle changes |
@@ -74,7 +126,7 @@ The system has **6 roles** with distinct permissions and landing pages.
 | Dashboard | System overview, open flags card, quick stats |
 | Accounts & Roles | Create/edit/deactivate user accounts, assign roles, reset passwords |
 | Vehicles & GPS Devices | Register vehicles, GPS devices (one-time token), pair/unpair, manage vehicle types |
-| Live Tracking | Real-time Leaflet map with fleet positions and geofence overlay |
+| Live Tracking | Real-time Google Maps view with fleet positions and geofence overlay |
 | Audit Trail | Full audit log — filter by event type, user, free-text search |
 | Chatbot FAQs | CRUD FAQ entries for the personnel chatbot |
 | Feedback | View/remove feedback submitted by personnel |
@@ -287,7 +339,7 @@ DRAFT ──→ PENDING ──→ VERIFIED ──→ APPROVED ──→ DISPATCH
 3. Fixes are stored in `gps_positions` with `DATETIME(3)` precision
 4. Active trips (ON_GOING) automatically attach GPS breadcrumbs
 5. Geofence transitions (campus entry/exit) are detected and logged
-6. Live map (`tracking.php`) polls every 10 seconds via Leaflet + OpenStreetMap
+6. Live map (`tracking.php`) polls every 10 seconds and renders on Google Maps (`assets/js/maps_loader.js`, key from `GOOGLE_MAPS_API_KEY`)
 
 ### Software trackers (hidden tracker accounts)
 
@@ -339,8 +391,10 @@ The system raises flags for anomalous conditions. One open flag per (ticket, typ
 - **CSRF protection** — every POST verified via `X-CSRF-Token` header or `csrf_token` field
 - **Session hardening** — httponly, SameSite=Strict, strict mode, periodic regeneration
 - **RBAC** — page-level (`Auth::requirePage`) and API-level (`Auth::requireApi`) guards
-- **Password policy** — bcrypt cost 12, lockout after N failed attempts, OTP reset
-- **MFA** — optional TOTP per account (setup via `core/TOTP.php`)
+- **Password policy** — bcrypt cost 12, lockout after N failed attempts, OTP reset (`core/PasswordPolicy.php`)
+- **MFA** — optional TOTP with self-service enrollment, recovery codes and an MFA challenge at login (`core/MfaService.php`, `auth/mfa_setup.php`); `config/mfa_toggle.php` can force it
+- **Rate limiting** — login, MFA, OTP, email-verification and account endpoints (`core/RateLimiter.php`)
+- **Security events** — lockouts/step-up events recorded in `security_events`, with email alerts via `core/SecurityNotificationService.php`
 - **Audit trail** — every mutation logged (`Audit::log` + DB triggers for status/vehicle changes)
 - **SQL injection** — PDO prepared statements with emulation disabled
 - **XSS** — `htmlspecialchars()` on all output
@@ -348,19 +402,25 @@ The system raises flags for anomalous conditions. One open flag per (ticket, typ
 
 ---
 
-## Database Schema (17 Tables)
+## Database Schema (26 Tables)
 
 | Table | Purpose |
 |---|---|
 | `app_settings` | Runtime configuration key-value store |
 | `roles` | 7 roles (6 user roles + hidden `GPS TRACKER`) |
 | `account` | User accounts with passwords, MFA, lockout; `is_system = 1` marks hidden tracker accounts |
-| `password_reset_otp` | OTP tokens for password reset |
+| `email_otps` | One-time codes for OTP login, email verification and password reset |
+| `mfa_recovery_codes` | Single-use MFA recovery codes per account |
+| `password_reset_sessions` | Password-reset tokens after OTP verification |
+| `security_events` | Lockouts, MFA and other security events |
 | `request_status` | 10 trip ticket statuses |
 | `trip_tickets` | Core trip request + execution data |
 | `trip_passengers` | Passenger manifest per trip |
+| `trip_drafts` | Private, unsubmitted request drafts |
+| `trip_draft_passengers` | Passenger manifest for drafts |
 | `guard_verifications` | Guard inspection records |
 | `trip_flags` | Automated/manual flags |
+| `trip_routes` | Google Routes result per leg (distance, traffic ETA, polyline) |
 | `trip_tracks` | Recorded (road-snapped) route per trip leg, written at completion |
 | `vehicle_types` | Vehicle classification |
 | `vehicle` | Fleet registry |
@@ -369,6 +429,8 @@ The system raises flags for anomalous conditions. One open flag per (ticket, typ
 | `geofence_events` | Campus entry/exit transitions |
 | `audit_trail` | Full audit log |
 | `chatbot` | FAQ entries for chatbot |
+| `chat_conversations` | Chatbot transcript per question/answer |
+| `notifications` | In-app notifications streamed by `api/sse.php` |
 | `feedback` | Personnel feedback on trips |
 
 ---
@@ -379,19 +441,29 @@ The system raises flags for anomalous conditions. One open flag per (ticket, typ
 # 1. Import database
 mysql -u root naap_mn_vts < database/schema.sql
 mysql -u root naap_mn_vts < database/seed.sql
-# Existing database? Apply the pending tracker-account migration instead:
-# mysql -u root naap_mn_vts < database/migrations/migration_tracker_accounts.sql
+# Existing database? Apply the pending database/migrations/*.sql files in date order
+# (skip *_rollback.sql), e.g.:
+# mysql -u root naap_mn_vts < database/migrations/migration_security_fixes.sql
 
-# 2. Install frontend dependencies
+# 2. Install PHP dependencies (PHPMailer) + frontend dependencies
+composer install
 npm install
 
 # 3. Build Tailwind CSS
 npm run build
 
-# 4. Access the app
+# 4. Optional: sanity checks
+C:\xampp\php\php.exe tests\run.php
+C:\xampp\php\php.exe scripts\deploy_check.php
+
+# 5. Access the app
 # http://localhost/NAAP_MN_VTS_Capstone/
 # Default admin: admin@naap.gov.ph / Admin@12345
 ```
+
+`.user.ini` (upload limits, OPcache) and `config/secrets.php` (DB/SMTP keys, copied from
+`config/secrets.example.php`) are required for a full-featured install; see
+[`INSTRUCTIONS/instructions.md`](INSTRUCTIONS/instructions.md) for the Hostinger walkthrough.
 
 ### Flag Evaluator Cron (Windows)
 
@@ -411,11 +483,11 @@ See [`docs/DEPLOY_HOSTINGER.md`](docs/DEPLOY_HOSTINGER.md) for the full producti
 
 | Feature | Status | Notes |
 |---|---|---|
-| **SMTP email delivery** | Not configured | `SMTP_USER`/`SMTP_PASS` empty in settings. OTP is shown inline for testing. Password reset emails are not sent. |
-| **MFA self-service setup** | Partial | TOTP infrastructure exists (`core/TOTP.php`, `account/mfa.php`), but no self-service enrollment flow exposed to all roles. |
+| **SMTP email delivery** | Implemented (needs SMTP keys) | `core/MailService.php` (PHPMailer) sends OTP, password-reset and security-alert mail. Without `SMTP_USER`/`SMTP_PASS` in MIS Settings the codes fall back to inline display for testing. |
+| **MFA self-service setup** | Implemented | Enrollment/disable at `account/mfa.php` → `auth/mfa_setup.php` with recovery codes (`core/MfaService.php`); `config/mfa_toggle.php` can force MFA for everyone. |
 | **Driver keep-alive / heartbeat monitoring** | Not implemented | No mechanism to detect if a driver closes the browser tab during an active trip (GPS telemetry would continue from the device, but no app-level check). |
-| **Push notifications** | Not implemented | No real-time notifications for status changes, flag raises, or assignment. All polling/page-refresh based. |
-| **Email notifications** | Not implemented | No email on ticket submission, approval, rejection, assignment, or completion. |
+| **Push notifications** | Partial | In-app notifications stream live over SSE (`api/sse.php` + `assets/js/SSEClient.js`, `api/badge_counts.php` fallback). No browser/OS push, no service worker. |
+| **Email notifications** | Not implemented (tickets) | Ticket lifecycle changes only create in-app notifications; email is used for OTP and security alerts (`core/SecurityNotificationService.php`). |
 | **Mobile responsive design** | Partial | Tailwind-based UI is functional but not optimized for mobile devices. |
 | **Batch operations** | Not implemented | No bulk approve/reject, bulk assignment, or bulk flag resolution. |
 | **Advanced reporting** | Partial | Monthly bar chart + per-vehicle table + Excel export, plus query-time KPIs: average approval time, turnaround time, trip duration, completion rate, active-trip utilization hours, and km/L fuel efficiency. No custom date range reports or driver performance metrics. |
@@ -428,12 +500,12 @@ See [`docs/DEPLOY_HOSTINGER.md`](docs/DEPLOY_HOSTINGER.md) for the full producti
 | **Vehicle maintenance tracking** | Not implemented | No service history, maintenance schedules, or vehicle health monitoring. |
 | **Fuel price tracking** | Not implemented | Fuel cost is entered per-trip but no centralized fuel price database or cost analysis. |
 | **Multi-language support** | Not implemented | English only. |
-| **API rate limiting** | Not implemented | GPS ingestion has interval-based throttling, but general API endpoints have no rate limiting. |
+| **API rate limiting** | Partial | `core/RateLimiter.php` guards login, MFA, OTP, email-verification and account endpoints; GPS ingestion has interval throttling. Other API endpoints are unthrottled. |
 | **Data export beyond Excel** | Not implemented | Only XLSX export. No CSV, PDF, or print-optimized views. |
 | **Ticket attachment management** | Limited | Only request letter upload (PDF/image/Word). No support for additional attachments like receipts, photos, or documents during the trip. |
 | **Passenger contact info** | Not implemented | Passenger manifest stores names only — no phone numbers or emergency contacts. |
 | **Trip notes/comments** | Not implemented | No inline commenting or note-taking on tickets between roles. |
 | **Dashboard widgets** | Basic | Role dashboards exist but have limited widget variety. No customizable dashboard layout. |
 | **Automated DRAFT purge config** | Hardcoded | DRAFT purge at 3 days is hardcoded in `FlagEvaluator`. Not configurable via `app_settings`. |
-| **Vehicle availability calendar** | Not implemented | Conflict checker prevents double-booking, but no visual calendar view of vehicle/driver availability. |
+| **Vehicle availability calendar** | Implemented | Month calendar partial (`partials/calendar.php`, `api/calendar.php`) embedded in the staff, director, guard, driver and personnel dashboards; shows dispatched/ongoing trips per role scope. Vehicles/drivers are chosen by conflict check, not by clicking a calendar slot. |
 | **Integration with HR systems** | Not implemented | Standalone — no integration with NAAP HR or payroll systems. |
