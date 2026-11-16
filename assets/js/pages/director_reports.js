@@ -11,7 +11,7 @@
         labels: data.labels,
         datasets: [{ label: 'Tickets', data: data.counts, backgroundColor: '#38BDF8', borderRadius: 4 }]
       },
-      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 5, precision: 0 } } } }
     });
   }
 
@@ -24,7 +24,7 @@
         labels: vData.labels,
         datasets: [{ label: 'Trips', data: vData.counts, backgroundColor: '#22c55e', borderRadius: 4 }]
       },
-      options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+      options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 5, precision: 0 } } } }
     });
   }
 

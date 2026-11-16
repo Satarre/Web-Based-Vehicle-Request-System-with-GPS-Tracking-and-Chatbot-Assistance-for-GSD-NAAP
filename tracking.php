@@ -10,12 +10,16 @@ $ACTIVE = BASE_URL . 'tracking.php';
 $PAGE_TITLE = 'Live Tracking';
 
 $HEAD_EXTRAS =
-    '<link rel="stylesheet" href="' . BASE_URL . 'assets/js/vendor/leaflet/leaflet.css">' .
-    '<script src="' . BASE_URL . 'assets/js/vendor/leaflet/leaflet.js" defer></script>';
+    '<link rel="preconnect" href="https://maps.googleapis.com" crossorigin>' .
+    '<link rel="preconnect" href="https://maps.gstatic.com" crossorigin>' .
+    '<script>window.NAAP_MAPS_KEY=' . json_encode(GOOGLE_MAPS_API_KEY) . ';</script>';
 
 $fenceLat    = Settings::getFloat('NAAP_GEOFENCE_LAT');
 $fenceLng    = Settings::getFloat('NAAP_GEOFENCE_LNG');
 $fenceRadius = Settings::getFloat('NAAP_GEOFENCE_RADIUS_METERS', 500);
+$originLat   = Settings::getFloat('NAAP_ORIGIN_LAT');
+$originLng   = Settings::getFloat('NAAP_ORIGIN_LNG');
+$originName  = Settings::get('NAAP_ORIGIN_NAME', '');
 
 require_once __DIR__ . '/partials/layout_head.php';
 require_once __DIR__ . '/partials/shell_open.php';
@@ -30,8 +34,11 @@ require_once __DIR__ . '/partials/shell_open.php';
     <div id="map"
          data-lat="<?= htmlspecialchars((string) $fenceLat) ?>"
          data-lng="<?= htmlspecialchars((string) $fenceLng) ?>"
-         data-radius="<?= htmlspecialchars((string) $fenceRadius) ?>"></div>
-    <aside class="bg-bg-surface border border-border rounded-[10px] track-panel">
+         data-radius="<?= htmlspecialchars((string) $fenceRadius) ?>"
+         data-origin-lat="<?= htmlspecialchars((string) $originLat) ?>"
+         data-origin-lng="<?= htmlspecialchars((string) $originLng) ?>"
+         data-origin-name="<?= htmlspecialchars($originName) ?>"></div>
+    <aside class="bg-bg-surface border border-border rounded-lg track-panel">
       <div class="card-head"><span>Fleet Status</span><span id="trackCount" class="text-text-muted"></span></div>
       <ul class="track-list" id="trackList"></ul>
       <div class="legend">
@@ -43,5 +50,6 @@ require_once __DIR__ . '/partials/shell_open.php';
   </div>
 </div>
 <?php
+$VENDOR_SCRIPTS = ['maps_loader.js'];
 $PAGE_SCRIPTS = ['tracking.js'];
 require_once __DIR__ . '/partials/layout_foot.php';

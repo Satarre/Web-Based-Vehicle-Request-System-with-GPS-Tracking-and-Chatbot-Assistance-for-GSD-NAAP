@@ -38,30 +38,29 @@ class TOTP {
     }
 
     /* ─────────────────────────────────────────────────────────────
-       Build a Google Charts QR code URL from the otpauth URI
-       ───────────────────────────────────────────────────────────── */
-    public static function getQrUrl(string $secret, string $label, string $issuer = 'Digital Trip Ticket'): string {
-        $uri = self::getUri($secret, $label, $issuer);
-        return 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . rawurlencode($uri);
-    }
-
-    /* ─────────────────────────────────────────────────────────────
        Verify a user-submitted OTP code against the secret
        Returns true if the code is valid (±WINDOW time steps)
        ───────────────────────────────────────────────────────────── */
     public static function verify(string $secret, string $code): bool {
+        return self::verifyStep($secret, $code) !== null;
+    }
+
+    /**
+     * Verify a code and return the matched time step (for replay protection),
+     * or null when the code is invalid.
+     */
+    public static function verifyStep(string $secret, string $code): ?int {
         $code = preg_replace('/\s+/', '', $code); // strip spaces
-        if (!preg_match('/^\d{6}$/', $code)) return false;
+        if (!preg_match('/^\d{6}$/', $code)) return null;
 
-        $timestamp = time();
-        $timeStep  = (int)floor($timestamp / self::PERIOD);
-
+        $timeStep = (int) floor(time() / self::PERIOD);
         for ($i = -self::WINDOW; $i <= self::WINDOW; $i++) {
-            if (hash_equals(self::generate($secret, $timeStep + $i), $code)) {
-                return true;
+            $step = $timeStep + $i;
+            if (hash_equals(self::generate($secret, $step), $code)) {
+                return $step;
             }
         }
-        return false;
+        return null;
     }
 
     /* ─────────────────────────────────────────────────────────────

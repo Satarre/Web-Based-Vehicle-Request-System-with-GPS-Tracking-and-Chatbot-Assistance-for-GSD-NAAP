@@ -8,6 +8,10 @@
   var per = 10;
   var tables = [];
 
+  function perFor(table) {
+    return parseInt(table.getAttribute('data-page-size'), 10) || per;
+  }
+
   function dataRows(table) {
     return Array.prototype.filter.call(
       table.querySelectorAll('tbody tr'),
@@ -43,7 +47,9 @@
   }
 
   function pool(st) {
-    return st.rows.filter(function (tr) {
+    /* Read rows in current DOM order (not the frozen init-time array) so the
+     * page follows any reordering done by table_sort.js. */
+    return dataRows(st.table).filter(function (tr) {
       return !tr.dataset.searchHidden && !tr.dataset.statHidden;
     });
   }
@@ -51,6 +57,7 @@
   function refresh(table) {
     var st = find(table);
     if (!st) return;
+    var per = perFor(st.table);
     var rows = pool(st);
 
     st.rows.forEach(function (tr) { tr.classList.remove('page-visible'); });
@@ -94,13 +101,23 @@
     st.bar.style.display = 'flex';
   }
 
+  function rowHaystack(tr) {
+    /* Visible text plus raw data-sort values (full destination, raw schedule,
+       status id, …) so search matches untruncated/raw cell values too. */
+    var hay = tr.textContent;
+    tr.querySelectorAll('td[data-sort]').forEach(function (td) {
+      hay += ' ' + td.getAttribute('data-sort');
+    });
+    return hay.toLowerCase();
+  }
+
   function attachSearch(st) {
     var inp = filterInput(st.table);
     if (!inp) return;
     inp.addEventListener('input', function () {
       var q = inp.value.trim().toLowerCase();
       st.rows.forEach(function (tr) {
-        if (q ? tr.textContent.toLowerCase().indexOf(q) === -1 : false) {
+        if (q ? rowHaystack(tr).indexOf(q) === -1 : false) {
           tr.dataset.searchHidden = '1';
         } else {
           delete tr.dataset.searchHidden;
@@ -115,7 +132,7 @@
     var rows = dataRows(table);
     if (rows.length === 0) return;
     var st = { table: table, rows: rows, page: 1, bar: null, info: null, tabs: null };
-    if (rows.length > per) {
+    if (rows.length > perFor(table)) {
       var built = buildBar(table);
       if (built) {
         st.bar = built.bar;

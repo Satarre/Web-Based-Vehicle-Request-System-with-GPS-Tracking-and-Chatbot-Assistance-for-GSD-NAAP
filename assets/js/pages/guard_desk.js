@@ -1,27 +1,11 @@
-/* guard_desk.js — gate verification + start trip from guard desk. */
+/* guard_desk.js — gate verification from the guard desk. */
 (function () {
   'use strict';
-
-  document.addEventListener('click', async (e) => {
-    const st = e.target.closest('[data-start-trip]');
-    if (st) {
-      if (await UI.confirmDialog({ message: 'Start this trip now? Enter the current odometer reading on the next screen.', okLabel: 'Start Trip' })) {
-        location.href = BASE_URL + 'ticket.php?id=' + st.dataset.startTrip;
-      }
-      return;
-    }
-  });
-
-  const btnGuardStart = document.getElementById('btnGuardStart');
-  if (btnGuardStart) {
-    btnGuardStart.addEventListener('click', () => {
-      location.href = BASE_URL + 'ticket.php?id=' + document.getElementById('g_ticket_id').value;
-    });
-  }
 
   const btnGvSubmit = document.getElementById('btnGvSubmit');
   if (btnGvSubmit) {
     btnGvSubmit.addEventListener('click', async () => {
+      if (!(await UI.confirmDialog({ message: 'Record this gate verification?', okLabel: 'Record' }))) return;
       try {
         const r = await API.post('api/trips.php', {
           action: 'verify',

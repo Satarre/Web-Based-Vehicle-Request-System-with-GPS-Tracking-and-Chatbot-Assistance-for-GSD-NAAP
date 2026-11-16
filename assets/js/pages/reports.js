@@ -10,6 +10,6 @@
       labels: data.labels,
       datasets: [{ label: 'Tickets', data: data.counts, backgroundColor: '#38BDF8', borderRadius: 4 }]
     },
-    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 5, precision: 0 } } } }
   });
 })();

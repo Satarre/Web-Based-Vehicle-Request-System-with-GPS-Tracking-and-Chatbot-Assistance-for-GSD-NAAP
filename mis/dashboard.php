@@ -21,18 +21,28 @@ $openFlags      = $q('SELECT COUNT(*) FROM trip_flags WHERE resolved_at IS NULL'
 $statusRows = $pdo->query(
     'SELECT r.status_name, COUNT(t.ticket_id) c FROM request_status r
      LEFT JOIN trip_tickets t ON t.status_id = r.status_id AND t.is_active = 1
+     WHERE r.is_active = 1
      GROUP BY r.status_id ORDER BY r.status_id'
 )->fetchAll();
+
+$statusChart = json_encode([
+    'labels' => array_map(
+        static fn(array $r): string => ucwords(strtolower(str_replace('_', ' ', (string) $r['status_name']))),
+        $statusRows
+    ),
+    'counts' => array_map(static fn(array $r): int => (int) $r['c'], $statusRows),
+    'names' => array_map(static fn(array $r): string => (string) $r['status_name'], $statusRows),
+]);
 
 require_once dirname(__DIR__) . '/partials/layout_head.php';
 require_once dirname(__DIR__) . '/partials/shell_open.php';
 ?>
 <div class="page-header">
   <h1 class="text-xl">System Dashboard</h1>
-  <a class="btn btn-sm" href="<?= BASE_URL ?>mis/fleet.php">Manage Fleet</a>
+  <a class="btn btn-sm btn-ghost" href="<?= BASE_URL ?>mis/fleet.php">Manage Fleet</a>
 </div>
 
-<div class="stat-cards mb-4">
+<div class="stat-cards mb-4 stagger-in">
   <?php
   $cards = [
       ['Active Vehicles', "$fleetAvailable / $fleetVehicles", 'available / registered'],
@@ -52,25 +62,16 @@ require_once dirname(__DIR__) . '/partials/shell_open.php';
 </div>
 
 <div class="content-card">
+  <div class="card-head"><h2 class="text-lg font-bold">Tickets by Status</h2></div>
   <div class="p-3.5">
-    <h3 class="text-sm uppercase tracking-widest text-text-muted mb-2.5">Tickets by Status</h3>
-    <table class="data-table" data-pager>
-      <tbody>
-      <?php foreach ($statusRows as $s): ?>
-        <tr>
-          <td style="width:220px">
-            <?php $c = ['status' => $s['status_name']]; include __DIR__ . '/../partials/ui/badge.php'; ?>
-          </td>
-          <td style="width:60%"><div class="progress-bar">
-            <?php $max = max(1, max(array_column($statusRows, 'c'))); ?>
-            <div class="progress-bar-fill bg-accent" style="width:<?= round(100 * (int) $s['c'] / $max) ?>%"></div>
-          </div></td>
-          <td class="text-right font-bold"><?= (int) $s['c'] ?></td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
+    <div class="chart-canvas">
+      <canvas id="chStatus" data-chart='<?= htmlspecialchars($statusChart, ENT_QUOTES) ?>'></canvas>
+    </div>
   </div>
 </div>
 
-<?php require_once dirname(__DIR__) . '/partials/layout_foot.php'; ?>
+<script src="<?= BASE_URL ?>assets/js/vendor/chart.umd.min.js"></script>
+<?php
+$PAGE_SCRIPTS = ['admin_dashboard.js'];
+require_once dirname(__DIR__) . '/partials/layout_foot.php';
+?>

@@ -3,6 +3,26 @@
   'use strict';
   const $ = id => document.getElementById(id);
 
+  /* Disable vehicles/drivers already dispatched for an overlapping window. */
+  function applyBusyFilter() {
+    const dep = $('asDep').value, ret = $('asRet').value;
+    const depT = dep ? new Date(dep).getTime() : NaN;
+    const retT = ret ? new Date(ret).getTime() : NaN;
+    const overlaps = (w) => {
+      if (!isFinite(depT) || !isFinite(retT)) return false;
+      const wDep = new Date(w[0]).getTime(), wRet = new Date(w[1]).getTime();
+      return depT < wRet && wDep < retT;
+    };
+    ['asVehicle', 'asDriver'].forEach(id => {
+      Array.from($(id).options).forEach(opt => {
+        if (opt.value === '') return;
+        let wins = [];
+        try { wins = JSON.parse(opt.dataset.busy || '[]'); } catch (e) {}
+        opt.disabled = wins.some(overlaps);
+      });
+    });
+  }
+
   function openAssign(btn) {
     $('asTicketId').value = btn.dataset.assign;
     $('asDep').value = btn.dataset.dep || '';
@@ -10,6 +30,7 @@
     $('asVehicle').value = '';
     $('asDriver').value = '';
     $('asOverride').value = '';
+    applyBusyFilter();
     syncOverride();
     UI.modal('assignModal', true);
   }
@@ -36,6 +57,9 @@
       scheduled_return: $('asRet').value,
       gps_override_reason: $('asOverride').value.trim()
     };
+    const vehicleLabel = $('asVehicle').options[$('asVehicle').selectedIndex]?.text.replace(/\s*·\s*NO GPS.*$/, '') || '';
+    const driverLabel = $('asDriver').options[$('asDriver').selectedIndex]?.text || '';
+    if (!(await UI.confirmDialog({ message: 'Assign and dispatch this trip with ' + vehicleLabel + ' / ' + driverLabel + '?', okLabel: 'Assign & Dispatch' }))) return;
     try {
       const r = await API.post('api/trips.php', body);
       UI.modal('assignModal', false);
@@ -53,7 +77,7 @@
 
   const auto = $('autoOpenTicket');
   if (auto) {
-    const btn = document.querySelector('[data-assign="' + auto.value + '"]');
+    const btn = document.querySelector('[data-assign="' + CSS.escape(auto.value) + '"]');
     if (btn) openAssign(btn);
   }
 })();

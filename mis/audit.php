@@ -6,10 +6,11 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/config/config.php';
 $USER = Auth::requirePage($pdo, [1]);
 $ACTIVE = BASE_URL . 'mis/audit.php';
-$PAGE_TITLE = 'Audit Trail';
+$PAGE_TITLE = 'System Audit Trail';
 
 $event   = trim((string) ($_GET['event'] ?? ''));
 $q       = trim((string) ($_GET['q'] ?? ''));
+$per     = 1000;
 
 $where = [];
 $args = [];
@@ -31,7 +32,7 @@ $total = (int) $total->fetchColumn();
 $st = $pdo->prepare(
     "SELECT a.*, u.full_name, u.email
      FROM audit_trail a LEFT JOIN account u ON u.account_id = a.user_id
-     $whereSql ORDER BY a.trail_id DESC"
+     $whereSql ORDER BY a.trail_id DESC LIMIT $per"
 );
 $st->execute($args);
 $rows = $st->fetchAll();
@@ -43,22 +44,23 @@ require_once dirname(__DIR__) . '/partials/shell_open.php';
 ?>
 <div class="content-card p-3.5 mb-3">
   <form method="get" class="flex gap-2 flex-wrap items-center">
-    <h2 class="text-lg font-bold mr-auto">Audit Trail <span class="text-text-muted font-normal">(<?= $total ?> records)</span></h2>
+    <h2 class="text-lg font-bold mr-auto">System Audit Trail <span class="text-text-muted font-normal ml-2">(<?= $total ?> records)</span></h2>
     <select class="form-input" name="event" onchange="this.form.submit()">
       <option value="">All events</option>
       <?php foreach ($events as $ev): ?>
         <option value="<?= htmlspecialchars($ev) ?>" <?= $event === $ev ? 'selected' : '' ?>><?= htmlspecialchars($ev) ?></option>
       <?php endforeach; ?>
     </select>
-    <input class="form-input w-60" name="q" placeholder="Search object / detail / user…" value="<?= htmlspecialchars($q) ?>">
-    <button class="btn btn-sm btn-primary">Filter</button>
-    <?php if ($event || $q): ?><a class="btn btn-sm btn-ghost" href="<?= BASE_URL ?>mis/audit.php">Clear</a><?php endif; ?>
+    <input class="form-input input-search-lg" name="q" placeholder="Search object / detail / user" value="<?= htmlspecialchars($q) ?>">
+    <button class="btn btn-primary btn-form">Filter</button>
+    <?php if ($event || $q): ?><a class="btn btn-ghost btn-form" href="<?= BASE_URL ?>mis/audit.php">Clear</a><?php endif; ?>
   </form>
 </div>
 
 <?php
 $c = [
     'id' => 'tblAudit',
+    'attrs' => 'data-page-size="25"',
     'columns' => ['#', 'When', 'User', 'Event', 'Object', 'Before → After', 'Outcome'],
     'rows' => array_map(fn($r) => [
         '<span class="text-text-muted">' . (int) $r['trail_id'] . '</span>',

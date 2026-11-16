@@ -16,13 +16,13 @@ $cancelCls = 'btn btn-ghost';
       <span><?= htmlspecialchars($RM_TITLE) ?></span>
       <button class="modal-close" type="button" onclick="UI.modal('<?= htmlspecialchars($rmId) ?>', false)"><?= icon('x') ?></button>
     </div>
-    <div class="px-[18px] py-4">
+    <div class="modal-pad-x py-4">
       <label class="form-label"><?= htmlspecialchars($rmLabel) ?></label>
       <textarea id="<?= htmlspecialchars($rmId) ?>Text" rows="3" maxlength="500"
                 class="form-input"
                 placeholder="<?= htmlspecialchars($RM_PLACEHOLDER ?? 'State the reason (required)') ?>"></textarea>
     </div>
-    <div class="px-[18px] py-3 border-t border-border flex justify-end gap-2">
+    <div class="modal-pad-x py-3 border-t border-border flex justify-end gap-2">
       <button class="<?= $cancelCls ?>" type="button" onclick="UI.modal('<?= htmlspecialchars($rmId) ?>', false)">Close</button>
       <button class="<?= $okCls ?>" id="<?= htmlspecialchars($rmId) ?>Ok"><?= htmlspecialchars($RM_OK) ?></button>
     </div>

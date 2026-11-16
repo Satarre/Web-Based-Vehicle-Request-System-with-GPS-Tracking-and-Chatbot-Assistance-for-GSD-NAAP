@@ -10,7 +10,8 @@ class TripState
 {
     public const DRAFT         = 1;
     public const PENDING       = 2;
-    public const VERIFIED      = 3;
+    // NOTE: status_id 3 (VERIFIED) is retired — the request_status row is kept
+    // inactive for audit/history only. No ticket may ever enter it again.
     public const APPROVED      = 4;
     public const DISPATCHED    = 5;
     public const ON_GOING      = 6;
@@ -23,7 +24,6 @@ class TripState
     public const NAMES = [
         self::DRAFT       => 'DRAFT',
         self::PENDING     => 'PENDING',
-        self::VERIFIED    => 'VERIFIED',
         self::APPROVED    => 'APPROVED',
         self::DISPATCHED  => 'DISPATCHED',
         self::ON_GOING    => 'ON_GOING',
@@ -35,9 +35,6 @@ class TripState
 
     /** Statuses where the vehicle is considered on an active trip (GPS association window). */
     public const ACTIVE_TRIP = [self::ON_GOING];
-
-    /** Statuses from which the requester may still cancel. */
-    public const CANCELLABLE = [self::DRAFT, self::PENDING, self::APPROVED, self::DISPATCHED];
 
     /**
      * Transition matrix: FROM => [TO => rule].
@@ -55,31 +52,34 @@ class TripState
             self::PENDING   => ['owner_only' => true, 'need_request' => true],
             self::CANCELLED => ['owner_only' => true],
         ],
+        // Personnel submit → SAO (Supervising Admin Officer) approves straight
+        // from PENDING; the former GSD "verify" step is gone.
         self::PENDING => [
-            self::VERIFIED  => ['roles' => [2]],
+            self::APPROVED  => ['roles' => [2]],
             self::REJECTED  => ['roles' => [2], 'need_reason' => true],
-            self::CANCELLED => ['owner_or_roles' => [2]],
-        ],
-        self::VERIFIED => [
-            self::APPROVED  => ['roles' => [3]],
-            self::REJECTED  => ['roles' => [3], 'need_reason' => true],
-            self::CANCELLED => ['owner_or_roles' => [3]],
+            self::CANCELLED => ['owner_only' => true],
         ],
         self::APPROVED => [
-            self::DISPATCHED => ['roles' => [3]],
+            self::DISPATCHED => ['roles' => [3], 'need_assignment' => true],
             self::REJECTED  => ['roles' => [3], 'need_reason' => true],
-            self::CANCELLED => ['owner_or_roles' => [3]],
+            self::CANCELLED => ['owner_only' => true],
+            // GSD Dispatcher sends an approved ticket back to the requester
+            // (reason mandatory) when the schedule can no longer be honored.
+            self::RESCHEDULED => ['roles' => [3], 'need_reason' => true],
         ],
         self::DISPATCHED => [
-            self::ON_GOING  => ['roles' => [4, 5]],
-            self::CANCELLED => ['owner_or_roles' => [3]],
+            self::ON_GOING  => ['roles' => [4], 'driver_match' => true],
+            self::CANCELLED => ['owner_only' => true],
         ],
         self::ON_GOING => [
-            self::COMPLETED   => ['roles' => [4], 'driver_match' => true],
-            self::RESCHEDULED => ['roles' => [3]],
+            self::COMPLETED => ['roles' => [4], 'driver_match' => true],
         ],
         self::RESCHEDULED => [
-            self::DISPATCHED => ['roles' => [3]],
+            // Requester picks a new schedule; back into the normal pipeline
+            // (SAO approval → GSD dispatch) from PENDING. Schedule validity
+            // (future, ret>dep) is enforced by the API handler, not here —
+            // the request already passed full completeness checks once.
+            self::PENDING => ['owner_only' => true],
         ],
         self::COMPLETED  => [],
         self::REJECTED   => [],
@@ -129,12 +129,45 @@ class TripState
         if (!empty($rule['need_reason']) && empty($ctx['has_reason'])) {
             return 'A reason is required for this action.';
         }
-        if (!empty($rule['need_assignment'])
-            && (empty($ticket['vehicle_id']) || empty($ticket['driver_id']))) {
-            return 'Both driver and vehicle must be assigned first.';
+        if (!empty($rule['need_assignment'])) {
+            // The dispatcher supplies the assignment in the same request that
+            // triggers APPROVED → DISPATCHED, so the ticket row is still empty
+            // at this point; `assignment_complete` lets that caller declare
+            // the pending selection (mirrors need_request/request_complete).
+            $assigned = !empty($ctx['assignment_complete'])
+                || (!empty($ticket['vehicle_id']) && !empty($ticket['driver_id']));
+            if (!$assigned) {
+                return 'Both driver and vehicle must be assigned first.';
+            }
         }
         if (!empty($rule['need_request']) && empty($ctx['request_complete'])) {
             return 'Complete all required fields before submitting.';
+        }
+        return true;
+    }
+
+    /**
+     * Driver "Stop Trip" — terminate an ON_GOING trip early (breakdown, emergency).
+     * Kept separate from the transition matrix so `can(..., CANCELLED, ...)` stays
+     * owner-only and the generic Cancel button never renders for drivers.
+     *
+     * @param array $ticket current trip_tickets row (needs status_id, driver_id)
+     * @param array $ctx    actor context: role_id, user_id, has_reason
+     * @return true|string
+     */
+    public static function canStop(array $ticket, array $ctx): bool|string
+    {
+        if ((int) ($ticket['status_id'] ?? 0) !== self::ON_GOING) {
+            return 'Only an ongoing trip can be stopped.';
+        }
+        if ((int) ($ctx['role_id'] ?? 0) !== 4) {
+            return 'Only the assigned driver may stop the trip.';
+        }
+        if ((int) ($ticket['driver_id'] ?? 0) !== (int) ($ctx['user_id'] ?? 0)) {
+            return 'You are not the assigned driver of this trip.';
+        }
+        if (empty($ctx['has_reason'])) {
+            return 'A reason is required to stop the trip.';
         }
         return true;
     }
@@ -149,7 +182,12 @@ class TripState
         }
         $dep = strtotime((string) $t['scheduled_departure']);
         $ret = strtotime((string) $t['scheduled_return']);
-        return $dep !== false && $ret !== false && $ret > $dep && (int) ($t['number_of_passengers'] ?? 0) >= 1;
+        // Departure must be strictly in the future: a trip cannot be approved
+        // or dispatched once its scheduled departure has already passed.
+        return $dep !== false && $ret !== false
+            && $ret > $dep
+            && $dep > time()
+            && (int) ($t['number_of_passengers'] ?? 0) >= 1;
     }
 
     public static function name(int $statusId): string

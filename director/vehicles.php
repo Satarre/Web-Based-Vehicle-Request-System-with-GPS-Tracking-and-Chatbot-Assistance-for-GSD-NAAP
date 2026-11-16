@@ -35,7 +35,7 @@ $btnDanger = 'btn btn-sm btn-danger';
 </div>
 
 <!-- Sidebar stats -->
-<div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3.5">
+<div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3.5 stagger-in">
   <div class="stat-card">
     <div class="stat-card-label">Total Vehicles</div>
     <div class="stat-card-value"><?= $total ?></div>
@@ -52,10 +52,12 @@ $btnDanger = 'btn btn-sm btn-danger';
 
 <!-- Vehicle table -->
 <div class="content-card">
-  <div class="flex items-center gap-2.5 px-4 py-3 border-b border-border">
+  <div class="list-head">
     <h2 class="text-lg font-bold">Vehicle Registry</h2>
-    <input type="search" placeholder="Search vehicles…" data-filter="#tblVehicles" class="<?= $inputCls ?> ml-auto w-48">
-    <button class="<?= $btnPrimary ?>" data-edit='{"id":0}' data-modal="editModal">+ Add Vehicle</button>
+    <div class="list-head-actions">
+      <input type="search" placeholder="Search vehicles" data-filter="#tblVehicles" class="<?= $inputCls ?> input-search">
+      <button class="<?= $btnPrimary ?>" data-edit='{"id":0}' data-modal="editModal">+ Add Vehicle</button>
+    </div>
   </div>
   <div class="overflow-x-auto">
   <table class="data-table" id="tblVehicles" data-pager>
@@ -102,7 +104,7 @@ $btnDanger = 'btn btn-sm btn-danger';
       <span data-role="title" data-add-label="Register Vehicle" data-edit-label="Edit Vehicle">Register Vehicle</span>
       <button class="modal-close" type="button" onclick="UI.modal('editModal', false)"><?= icon('x') ?></button>
     </div>
-    <div class="px-[18px] py-4">
+    <div class="modal-pad-x py-4">
       <form id="vehicleForm" autocomplete="off" onsubmit="return false">
         <input type="hidden" name="vehicle_id" value="0" data-role="pk">
         <label class="<?= $labelCls ?>">Plate Number *</label><input name="plate_number" required maxlength="20" class="<?= $inputCls ?>" style="text-transform:uppercase">
@@ -120,10 +122,10 @@ $btnDanger = 'btn btn-sm btn-danger';
             <select name="default_fuel_type" class="<?= $inputCls ?>"><option>Gasoline</option><option>Diesel</option></select>
           </div>
         </div>
-        <div class="flex items-center gap-1.5 mt-2.5"><input type="checkbox" name="is_available" checked> <span class="text-md">Available for dispatch</span></div>
+        <div class="mt-2.5"><label class="checkbox-row"><input type="checkbox" name="is_available" checked> <span class="text-md">Available for dispatch</span></label></div>
       </form>
     </div>
-    <div class="px-[18px] py-3 border-t border-border flex justify-end gap-2">
+    <div class="modal-pad-x py-3 border-t border-border flex justify-end gap-2">
       <button class="<?= $btnGhost ?>" type="button" onclick="UI.modal('editModal', false)">Close</button>
       <button class="<?= $btnPrimary ?>" id="vehicleFormSubmit">Save Vehicle</button>
     </div>

@@ -3,7 +3,8 @@ declare(strict_types=1);
 /**
  * flags.php — shared flag desk (Phase 5). Roles 1 (MIS) & 3 (Staff).
  * Lists open trip_flags with manual resolution (mandatory reason);
- * NO_TELEMETRY/GEOFENCE_DEVIATION raised live, the rest by scripts/evaluate_flags.php.
+ * NO_TELEMETRY (dispatch) and GEOFENCE_DEVIATION (start/complete outside the
+ * fence) raised live, the rest by scripts/evaluate_flags.php.
  */
 require_once __DIR__ . '/config/config.php';
 $USER = Auth::requirePage($pdo, [1, 3]);
@@ -50,7 +51,7 @@ $openRows = array_map(function ($f) use ($fmt) {
         htmlspecialchars((string) ($f['driver_name'] ?? '—')),
         '<span class="text-text-muted">' . htmlspecialchars((string) ($f['detail'] ?? '')) . '</span>',
         $fmt($f['raised_at']),
-        '<button class="btn btn-sm btn-primary" data-resolve="' . (int) $f['flag_id'] . '">Resolve…</button>',
+        '<button class="btn btn-sm btn-primary" data-resolve="' . (int) $f['flag_id'] . '">Resolve</button>',
     ];
 }, $open);
 ?>
@@ -59,7 +60,7 @@ $openRows = array_map(function ($f) use ($fmt) {
     <div class="px-3.5 pt-3.5 pb-0">
       <h2 class="text-lg font-bold">Open Flags</h2>
       <p class="text-text-muted text-xs mt-1 mb-2.5">Raised automatically by the GPS pipeline and the scheduled evaluator (<code>scripts/evaluate_flags.php</code>). Resolving requires a reason and is audited.</p>
-      <div class="flex items-center gap-1.5 flex-wrap mb-3" style="justify-content:flex-start"><input class="w-48" type="search" placeholder="Search open flags…" data-filter="#tblOpenFlags"></div>
+      <div class="flex items-center gap-1.5 flex-wrap mb-3" style="justify-content:flex-start"><input class="input-search" type="search" placeholder="Search open flags" data-filter="#tblOpenFlags"></div>
     </div>
     <div class="overflow-x-auto">
       <table class="data-table" id="tblOpenFlags" data-pager>
@@ -81,7 +82,7 @@ $openRows = array_map(function ($f) use ($fmt) {
 $c = [
     'title' => 'Recently Resolved',
     'id' => 'tblResolved',
-    'filter' => 'Search resolved…',
+    'filter' => 'Search resolved',
     'columns' => ['Type', 'Ticket', 'Reason', 'Resolved By', 'At'],
     'rows' => array_map(fn($f) => [
         '<span class="badge badge-completed">' . htmlspecialchars($f['flag_type']) . '</span>',

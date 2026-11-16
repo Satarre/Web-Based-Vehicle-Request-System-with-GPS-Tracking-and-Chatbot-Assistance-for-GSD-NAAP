@@ -8,7 +8,7 @@ class Audit
 {
     public static function ip(): string
     {
-        $raw = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $raw = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         return ($raw === '::1') ? '127.0.0.1' : (string) $raw;
     }
 

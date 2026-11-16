@@ -5,11 +5,19 @@
   const btnSave = document.getElementById('btnProfileSave');
   if (btnSave) {
     btnSave.addEventListener('click', async () => {
-      const name = document.getElementById('pfName').value.trim();
-      if (!name) { UI.toast('Full name is required.', 'err'); return; }
+      const first = document.getElementById('pfFirstName').value.trim();
+      const last = document.getElementById('pfLastName').value.trim();
+      if (!first || !last) { UI.toast('First name and last name are required.', 'err'); return; }
       btnSave.disabled = true;
       try {
-        const res = await API.post('api/account.php', { action: 'profile_save', full_name: name });
+        const res = await API.post('api/account.php', {
+          action: 'profile_save',
+          first_name: first,
+          middle_initial: document.getElementById('pfMiddleInitial').value.trim(),
+          middle_name: document.getElementById('pfMiddleName').value.trim(),
+          last_name: last,
+          suffix: document.getElementById('pfSuffix').value.trim(),
+        });
         UI.toast(res.message || 'Profile updated.', 'ok');
         setTimeout(() => location.reload(), 600);
       } catch (e) {
@@ -26,7 +34,11 @@
       const nw = document.getElementById('pwNew').value;
       const cf = document.getElementById('pwConfirm').value;
       if (!cur || !nw) { UI.toast('Current and new passwords are required.', 'err'); return; }
-      if (nw.length < 8) { UI.toast('New password must be at least 8 characters.', 'err'); return; }
+      if (typeof PasswordPolicy !== 'undefined') {
+        const pwErr = PasswordPolicy.check(nw);
+        if (pwErr) { UI.toast(pwErr, 'err'); return; }
+      }
+      if (nw === cur) { UI.toast('New password must be different from the current password.', 'err'); return; }
       if (nw !== cf) { UI.toast('New passwords do not match.', 'err'); return; }
       btnPw.disabled = true;
       try {

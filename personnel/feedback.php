@@ -11,10 +11,10 @@ $PAGE_TITLE = 'Feedback';
 $tickets = $pdo->prepare(
     'SELECT t.ticket_id, t.dtt_number, t.place_to_visit, r.status_name
      FROM trip_tickets t JOIN request_status r ON r.status_id = t.status_id
-     WHERE t.created_by = ? AND t.is_active = 1 AND t.status_id != 1
+     WHERE t.created_by = ? AND t.is_active = 1 AND t.status_id = ?
      ORDER BY t.ticket_id DESC'
 );
-$tickets->execute([$USER['id']]);
+$tickets->execute([$USER['id'], TripState::COMPLETED]);
 $tickets = $tickets->fetchAll();
 
 $mine = $pdo->prepare(
@@ -34,7 +34,6 @@ require_once dirname(__DIR__) . '/partials/shell_open.php';
 $inputCls = 'form-input';
 $labelCls = 'form-label';
 ?>
-<div class="flex items-center gap-3 mb-3.5"><h1 class="text-lg">Service Feedback</h1></div>
 
 <div class="content-card p-3.5 mb-3.5" style="max-width:640px">
   <h2 class="text-lg font-bold mb-2.5">Tell us how the trip went</h2>
@@ -46,13 +45,13 @@ $labelCls = 'form-label';
       <option value="">Select a trip…</option>
       <?php foreach ($tickets as $t): ?>
         <option value="<?= (int) $t['ticket_id'] ?>">
-          <?= htmlspecialchars(($t['dtt_number'] ?? ('Request #' . $t['ticket_id'])) . ' — ' . mb_strimwidth($t['place_to_visit'], 0, 40, '…')) ?>
+          <?= htmlspecialchars(($t['dtt_number'] ?? ('#' . $t['ticket_id'])) . ' — ' . mb_strimwidth($t['place_to_visit'], 0, 40, '…')) ?>
         </option>
       <?php endforeach; ?>
     </select>
     <label class="<?= $labelCls ?> mt-2.5">Feedback *</label>
     <textarea id="fbDetails" rows="4" maxlength="2000" class="<?= $inputCls ?>"
-              placeholder="Vehicle condition, driver conduct, punctuality, overall service…"></textarea>
+              placeholder="Vehicle condition, driver conduct, punctuality, overall service"></textarea>
     <div class="mt-3 flex justify-end">
       <button class="btn btn-primary" id="fbSend">Submit Feedback</button>
     </div>
@@ -60,7 +59,7 @@ $labelCls = 'form-label';
 </div>
 
 <div class="content-card">
-  <div class="px-[18px] py-3.5 border-b border-border"><h2 class="text-lg font-bold">Your Previous Feedback</h2></div>
+  <div class="modal-pad-x py-3.5 border-b border-border"><h2 class="text-lg font-bold">Your Previous Feedback</h2></div>
   <div class="overflow-x-auto">
     <table class="data-table" data-pager>
       <thead><tr><th>Trip</th><th>Feedback</th><th>Submitted</th></tr></thead>

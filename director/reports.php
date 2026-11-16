@@ -16,6 +16,29 @@ $fuelCostTotal  = (float) $pdo->query('SELECT COALESCE(SUM(fuel_cost), 0) FROM t
 $easytripTotal  = (float) $pdo->query('SELECT COALESCE(SUM(easytrip_cost), 0) FROM trip_tickets WHERE is_active = 1 AND easytrip_cost IS NOT NULL')->fetchColumn();
 $autosweepTotal = (float) $pdo->query('SELECT COALESCE(SUM(autosweep_cost), 0) FROM trip_tickets WHERE is_active = 1 AND autosweep_cost IS NOT NULL')->fetchColumn();
 
+/* ── Time-based KPIs (computed at query time) ── */
+$kpiApproval = (float) $pdo->query(
+    'SELECT COALESCE(AVG(TIMESTAMPDIFF(MINUTE, submitted_at, approved_at)), 0) / 60
+     FROM trip_tickets WHERE is_active = 1 AND submitted_at IS NOT NULL AND approved_at IS NOT NULL'
+)->fetchColumn();
+$kpiTurnaround = (float) $pdo->query(
+    'SELECT COALESCE(AVG(TIMESTAMPDIFF(HOUR, submitted_at, certified_at)), 0)
+     FROM trip_tickets WHERE is_active = 1 AND submitted_at IS NOT NULL AND certified_at IS NOT NULL'
+)->fetchColumn();
+$kpiTripDur = (float) $pdo->query(
+    'SELECT COALESCE(AVG(TIMESTAMPDIFF(MINUTE, actual_departure_at, return_at)), 0) / 60
+     FROM trip_tickets WHERE is_active = 1 AND actual_departure_at IS NOT NULL AND return_at IS NOT NULL'
+)->fetchColumn();
+$kpiCompletion = (float) $pdo->query(
+    'SELECT 100 * SUM(status_id = ' . TripState::COMPLETED . ')
+            / NULLIF(SUM(status_id IN (' . implode(',', [TripState::APPROVED, TripState::DISPATCHED, TripState::ON_GOING, TripState::COMPLETED]) . ')), 0)
+     FROM trip_tickets WHERE is_active = 1'
+)->fetchColumn();
+$kpiUtilHours = (float) $pdo->query(
+    'SELECT COALESCE(SUM(TIMESTAMPDIFF(MINUTE, actual_departure_at, return_at)), 0) / 60
+     FROM trip_tickets WHERE is_active = 1 AND actual_departure_at IS NOT NULL AND return_at IS NOT NULL'
+)->fetchColumn();
+
 /* ── Monthly bar chart ── */
 $monthly = $pdo->query(
     "SELECT DATE_FORMAT(scheduled_departure, '%Y-%m') ym, COUNT(*) c
@@ -31,6 +54,7 @@ $perVehicle = $pdo->query(
             SUM(CASE WHEN t.status_id IN (6,7,8,9,10,11) THEN 1 ELSE 0 END) AS trips,
             COALESCE(SUM(t.distance_odometer), 0) AS km,
             COALESCE(SUM(t.fuel_used), 0) AS fuel,
+            ROUND(COALESCE(SUM(t.distance_odometer), 0) / NULLIF(SUM(t.fuel_used), 0), 1) AS kmpl,
             COALESCE(SUM(t.fuel_cost), 0) AS fuel_cost,
             COALESCE(SUM(t.easytrip_cost), 0) AS easytrip_cost,
             COALESCE(SUM(t.autosweep_cost), 0) AS autosweep_cost
@@ -64,14 +88,16 @@ if ($BUCKETS[$st][1] !== null) {
 }
 if ($q !== '') {
     $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
-    $where .= ' AND (t.dtt_number LIKE :s1 OR t.passenger_name LIKE :s2 OR t.place_to_visit LIKE :s3 OR v.plate_number LIKE :s4 OR d.full_name LIKE :s5)';
-    foreach (['s1', 's2', 's3', 's4', 's5'] as $k) { $args[$k] = $like; }
+    $where .= ' AND (t.dtt_number LIKE :s1 OR t.passenger_name LIKE :s2 OR t.surname LIKE :s6
+                 OR t.place_to_visit LIKE :s3 OR v.plate_number LIKE :s4 OR d.full_name LIKE :s5
+                 OR r.status_name LIKE :s7 OR t.scheduled_departure LIKE :s8 OR t.scheduled_return LIKE :s9)';
+    foreach (['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9'] as $k) { $args[$k] = $like; }
 }
 $logSt = $pdo->prepare(
     "SELECT t.ticket_id, t.dtt_number, r.status_name AS status,
             COALESCE(t.scheduled_departure, '') AS departure,
             COALESCE(t.scheduled_return, '') AS return_,
-            t.passenger_name, t.place_to_visit,
+            t.passenger_name, t.surname, t.middle_initial, t.suffix, t.place_to_visit,
             COALESCE(v.plate_number, '') AS plate,
             COALESCE(d.full_name, '') AS driver,
             COALESCE(t.distance_odometer, 0) AS distance_km,
@@ -95,6 +121,17 @@ $when = static function (?string $d): string {
 };
 $peso = static fn($v): string => $v !== null && (float) $v > 0 ? '₱' . number_format((float) $v, 2) : '—';
 
+$paxName = static function (array $t): string {
+    $first = trim((string) ($t['passenger_name'] ?? ''));
+    $mi    = strtoupper(trim((string) ($t['middle_initial'] ?? '')));
+    $sur   = trim((string) ($t['surname'] ?? ''));
+    $suf   = trim((string) ($t['suffix'] ?? ''));
+    $name  = $sur ? $sur . ', ' . $first : $first;
+    if ($mi) $name .= ' ' . $mi . '.';
+    if ($suf) $name .= ' ' . $suf;
+    return $name;
+};
+
 $chartData = json_encode([
     'labels' => array_map(static fn($r) => $r['ym'], $monthly),
     'counts' => array_map(static fn($r) => (int) $r['c'], $monthly),
@@ -107,27 +144,29 @@ $vehicleChartData = json_encode([
 
 $export = json_encode([
     'tripLog' => [
-        ['DTT', 'Status', 'Departure', 'Return', 'Passenger', 'Destination', 'Vehicle', 'Driver', 'Distance (km)', 'Fuel Used (L)', 'Fuel Cost (₱)', 'Easytrip (₱)', 'Autosweep (₱)'],
-        ...array_map(static fn($r) => [
+        ['Ticket No.', 'Status', 'Departure', 'Return', 'Passenger', 'Destination', 'Vehicle', 'Driver', 'Distance (km)', 'Fuel Used (L)', 'Fuel Cost (₱)', 'Easytrip (₱)', 'Autosweep (₱)'],
+        ...array_map(static function($r) use ($paxName) {
+            return [
             $r['dtt_number'], $r['status'], $r['departure'], $r['return_'],
-            $r['passenger_name'], $r['place_to_visit'], $r['plate'], $r['driver'],
+            $paxName($r), $r['place_to_visit'], $r['plate'], $r['driver'],
             (float) $r['distance_km'], (float) $r['fuel_l'],
             (float) ($r['fuel_cost'] ?? 0), (float) ($r['easytrip_cost'] ?? 0), (float) ($r['autosweep_cost'] ?? 0),
-        ], $log),
+        ]; }, $log),
     ],
     'perVehicle' => [
-        ['Vehicle', 'Trips', 'Distance (km)', 'Fuel Used (L)', 'Fuel Cost (₱)', 'Easytrip (₱)', 'Autosweep (₱)'],
+        ['Vehicle', 'Trips', 'Distance (km)', 'Fuel Used (L)', 'Km/L', 'Fuel Cost (₱)', 'Easytrip (₱)', 'Autosweep (₱)'],
         ...array_map(static fn($v) => [
             $v['plate_number'], (int) $v['trips'],
             round((float) $v['km'], 1), round((float) $v['fuel'], 2),
+            $v['kmpl'] !== null ? (float) $v['kmpl'] : null,
             round((float) $v['fuel_cost'], 2), round((float) $v['easytrip_cost'], 2), round((float) $v['autosweep_cost'], 2),
         ], $perVehicle),
     ],
 ], JSON_UNESCAPED_UNICODE);
 
-$chipUrl = static fn(string $s): string => htmlspecialchars(http_build_query(['status' => $s, 'q' => $q]), ENT_QUOTES);
+$chipUrl = static fn(string $s): string => htmlspecialchars('?' . http_build_query(['status' => $s, 'q' => $q]), ENT_QUOTES);
 
-$PAGE_SCRIPTS = ['director_reports.js'];
+$PAGE_SCRIPTS = ['director_reports.js', 'table_sort.js'];
 require_once dirname(__DIR__) . '/partials/layout_head.php';
 require_once dirname(__DIR__) . '/partials/shell_open.php';
 
@@ -135,13 +174,13 @@ $searchCls = 'form-input';
 $btnPrimarySm = 'btn btn-sm btn-primary';
 $btnGhostSm = 'btn btn-sm btn-ghost';
 ?>
-<div class="flex items-center gap-3 mb-3.5">
+<div class="flex flex-wrap items-center gap-3 mb-3.5">
   <h1 class="text-lg">Reports</h1>
   <button class="<?= $btnPrimarySm ?>" id="btnExportXlsx" style="margin-left:auto">Export to Excel (.xlsx)</button>
 </div>
 
 <!-- Stat cards -->
-<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 mb-3.5">
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5 stagger-in">
   <div class="stat-card">
     <div class="stat-card-label">Total Vehicles</div>
     <div class="stat-card-value"><?= $vehicleCount ?></div>
@@ -168,8 +207,37 @@ $btnGhostSm = 'btn btn-sm btn-ghost';
   </div>
 </div>
 
+<!-- Time-based KPIs -->
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 mb-3.5 stagger-in">
+  <div class="stat-card">
+    <div class="stat-card-label">Avg Approval Time</div>
+    <div class="stat-card-value"><?= $kpiApproval > 0 ? number_format($kpiApproval, 1) . ' h' : '—' ?></div>
+    <div class="stat-card-sub">submit → approve</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Avg Turnaround Time</div>
+    <div class="stat-card-value"><?= $kpiTurnaround > 0 ? number_format($kpiTurnaround, 1) . ' h' : '—' ?></div>
+    <div class="stat-card-sub">submit → complete</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Avg Trip Duration</div>
+    <div class="stat-card-value"><?= $kpiTripDur > 0 ? number_format($kpiTripDur, 1) . ' h' : '—' ?></div>
+    <div class="stat-card-sub">depart → return</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Completion Rate</div>
+    <div class="stat-card-value"><?= $kpiCompletion > 0 ? number_format($kpiCompletion, 1) . '%' : '—' ?></div>
+    <div class="stat-card-sub">completed / pipeline</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Vehicle Usage</div>
+    <div class="stat-card-value"><?= $kpiUtilHours > 0 ? number_format($kpiUtilHours, 1) . ' h' : '—' ?></div>
+    <div class="stat-card-sub">active-trip hours</div>
+  </div>
+</div>
+
 <!-- Charts -->
-<div class="grid gap-3.5 mb-3.5" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+<div class="chart-grid mb-3.5">
   <div class="content-card p-3.5">
     <h3 class="text-sm uppercase tracking-wide text-text-muted mb-3">Tickets per Month (last 12)</h3>
     <?php if ($monthly): ?>
@@ -193,15 +261,16 @@ $btnGhostSm = 'btn btn-sm btn-ghost';
   <div class="card-head"><span>Vehicle Trip Reports</span><span class="text-text-muted font-normal text-base"><?= count($perVehicle) ?> vehicles</span></div>
   <div class="max-h-66 overflow-y-auto">
     <table class="data-table" data-pager>
-      <thead><tr><th class="whitespace-nowrap">Vehicle</th><th class="text-right whitespace-nowrap">Trips</th><th class="text-right whitespace-nowrap">Distance</th><th class="text-right whitespace-nowrap">Fuel (L)</th><th class="text-right whitespace-nowrap">Fuel (₱)</th><th class="text-right whitespace-nowrap">Easytrip (₱)</th><th class="text-right whitespace-nowrap">Autosweep (₱)</th></tr></thead>
+      <thead><tr><th class="whitespace-nowrap">Vehicle</th><th class="text-right whitespace-nowrap">Trips</th><th class="text-right whitespace-nowrap">Distance</th><th class="text-right whitespace-nowrap">Fuel (L)</th><th class="text-right whitespace-nowrap">Km/L</th><th class="text-right whitespace-nowrap">Fuel (₱)</th><th class="text-right whitespace-nowrap">Easytrip (₱)</th><th class="text-right whitespace-nowrap">Autosweep (₱)</th></tr></thead>
       <tbody>
-      <?php if (!$perVehicle): ?><tr><td colspan="7" class="text-center text-text-muted">No active vehicles.</td></tr><?php endif; ?>
+      <?php if (!$perVehicle): ?><tr><td colspan="8" class="text-center text-text-muted">No active vehicles.</td></tr><?php endif; ?>
       <?php foreach ($perVehicle as $v): ?>
         <tr>
           <td class="whitespace-nowrap"><strong><?= htmlspecialchars($v['plate_number']) ?></strong></td>
           <td class="text-right whitespace-nowrap"><?= (int) $v['trips'] ?></td>
           <td class="text-right whitespace-nowrap"><?= number_format((float) $v['km'], 1) ?> km</td>
           <td class="text-right whitespace-nowrap"><?= number_format((float) $v['fuel'], 2) ?></td>
+          <td class="text-right whitespace-nowrap"><?= $v['kmpl'] !== null ? number_format((float) $v['kmpl'], 1) : '—' ?></td>
           <td class="text-right whitespace-nowrap"><?= $peso($v['fuel_cost']) ?></td>
           <td class="text-right whitespace-nowrap"><?= $peso($v['easytrip_cost']) ?></td>
           <td class="text-right whitespace-nowrap"><?= $peso($v['autosweep_cost']) ?></td>
@@ -216,10 +285,10 @@ $btnGhostSm = 'btn btn-sm btn-ghost';
 <div class="content-card">
   <div class="card-head">
     <span>Trip Log <span class="text-text-muted font-normal text-base"><?= count($log) ?></span></span>
-    <div class="flex gap-1.5 items-center">
-      <form method="get" class="flex gap-1.5 items-center">
+    <div class="flex gap-1.5 items-center flex-wrap justify-end">
+      <form method="get" class="flex gap-1.5 items-center flex-wrap">
         <input type="hidden" name="status" value="<?= htmlspecialchars($st) ?>">
-        <input type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="DTT, passenger, destination, vehicle…" class="<?= $searchCls ?>" style="width:250px">
+        <input type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Ticket no., passenger, destination, vehicle, schedule, status" class="<?= $searchCls ?> input-shrink">
         <button class="<?= $btnPrimarySm ?>">Search</button>
         <?php if ($q !== ''): ?><a class="<?= $btnGhostSm ?>" href="?status=<?= htmlspecialchars($st) ?>">Clear</a><?php endif; ?>
       </form>
@@ -229,24 +298,24 @@ $btnGhostSm = 'btn btn-sm btn-ghost';
     </div>
   </div>
   <div class="overflow-x-auto">
-    <table class="data-table" data-pager>
-      <thead><tr><th class="whitespace-nowrap">DTT</th><th class="whitespace-nowrap">Status</th><th class="whitespace-nowrap">Passenger</th><th class="whitespace-nowrap">Destination</th><th class="whitespace-nowrap">Schedule</th><th class="whitespace-nowrap">Vehicle</th><th class="whitespace-nowrap">Driver</th><th class="text-right whitespace-nowrap">Distance</th><th class="text-right whitespace-nowrap">Fuel (L)</th><th class="text-right whitespace-nowrap">Fuel (₱)</th><th class="text-right whitespace-nowrap">Easytrip (₱)</th><th class="text-right whitespace-nowrap">Autosweep (₱)</th></tr></thead>
+    <table class="data-table" id="tblTripLog" data-pager data-sortable>
+      <thead><tr><th class="whitespace-nowrap" data-sort="ticket">Ticket No.</th><th class="whitespace-nowrap" data-sort="status">Status</th><th class="whitespace-nowrap" data-sort="passenger">Passenger</th><th class="whitespace-nowrap" data-sort="destination">Destination</th><th class="whitespace-nowrap" data-sort="schedule">Schedule</th><th class="whitespace-nowrap" data-sort="vehicle">Vehicle</th><th class="whitespace-nowrap" data-sort="driver">Driver</th><th class="text-right whitespace-nowrap" data-sort="distance">Distance</th><th class="text-right whitespace-nowrap" data-sort="fuel">Fuel (L)</th><th class="text-right whitespace-nowrap" data-sort="fuelcost">Fuel (₱)</th><th class="text-right whitespace-nowrap" data-sort="easytrip">Easytrip (₱)</th><th class="text-right whitespace-nowrap" data-sort="autosweep">Autosweep (₱)</th></tr></thead>
       <tbody>
       <?php if (!$log): ?><tr><td colspan="12" class="text-center text-text-muted">No trips match this view.</td></tr><?php endif; ?>
       <?php foreach ($log as $t): ?>
         <tr>
-          <td class="whitespace-nowrap"><strong><?= htmlspecialchars($t['dtt_number'] ?? '—') ?></strong></td>
-          <td class="whitespace-nowrap"><span class="badge badge-<?= strtolower(str_replace('_', '-', $t['status'])) ?>"><?= htmlspecialchars($t['status']) ?></span></td>
-          <td class="whitespace-nowrap"><?= htmlspecialchars((string) $t['passenger_name']) ?></td>
-          <td class="whitespace-nowrap"><?= htmlspecialchars(mb_strimwidth((string) $t['place_to_visit'], 0, 48, '…')) ?></td>
-          <td class="whitespace-nowrap"><div><?= $when($t['departure'] ?: null) ?></div><div class="text-sm text-text-muted">RET · <?= $when($t['return_'] ?: null) ?></div></td>
-          <td class="whitespace-nowrap"><?= htmlspecialchars($t['plate'] ?: '—') ?></td>
-          <td class="whitespace-nowrap"><?= htmlspecialchars($t['driver'] ?: '—') ?></td>
-          <td class="text-right whitespace-nowrap"><?= (float) $t['distance_km'] > 0 ? number_format((float) $t['distance_km'], 1) . ' km' : '—' ?></td>
-          <td class="text-right whitespace-nowrap"><?= (float) $t['fuel_l'] > 0 ? number_format((float) $t['fuel_l'], 2) : '—' ?></td>
-          <td class="text-right whitespace-nowrap"><?= $peso($t['fuel_cost']) ?></td>
-          <td class="text-right whitespace-nowrap"><?= $peso($t['easytrip_cost']) ?></td>
-          <td class="text-right whitespace-nowrap"><?= $peso($t['autosweep_cost']) ?></td>
+          <td class="whitespace-nowrap" data-sort="<?= htmlspecialchars((string) ($t['dtt_number'] ?? '')) ?>"><strong><?= htmlspecialchars($t['dtt_number'] ?? '—') ?></strong></td>
+          <td class="whitespace-nowrap" data-sort="<?= htmlspecialchars((string) $t['status']) ?>"><span class="badge badge-<?= strtolower(str_replace('_', '-', $t['status'])) ?>"><?= htmlspecialchars($t['status']) ?></span></td>
+          <td class="whitespace-nowrap" data-sort="<?= htmlspecialchars($paxName($t)) ?>"><?= htmlspecialchars($paxName($t)) ?></td>
+          <td class="whitespace-nowrap" data-sort="<?= htmlspecialchars((string) $t['place_to_visit']) ?>"><?= htmlspecialchars(mb_strimwidth((string) $t['place_to_visit'], 0, 48, '…')) ?></td>
+          <td class="whitespace-nowrap" data-sort="<?= htmlspecialchars((string) $t['departure']) ?>"><div><?= $when($t['departure'] ?: null) ?></div><div class="text-sm text-text-muted">RET · <?= $when($t['return_'] ?: null) ?></div></td>
+          <td class="whitespace-nowrap" data-sort="<?= htmlspecialchars((string) $t['plate']) ?>"><?= htmlspecialchars($t['plate'] ?: '—') ?></td>
+          <td class="whitespace-nowrap" data-sort="<?= htmlspecialchars((string) $t['driver']) ?>"><?= htmlspecialchars($t['driver'] ?: '—') ?></td>
+          <td class="text-right whitespace-nowrap" data-sort="<?= (float) $t['distance_km'] ?>"><?= (float) $t['distance_km'] > 0 ? number_format((float) $t['distance_km'], 1) . ' km' : '—' ?></td>
+          <td class="text-right whitespace-nowrap" data-sort="<?= (float) $t['fuel_l'] ?>"><?= (float) $t['fuel_l'] > 0 ? number_format((float) $t['fuel_l'], 2) : '—' ?></td>
+          <td class="text-right whitespace-nowrap" data-sort="<?= (float) ($t['fuel_cost'] ?? 0) ?>"><?= $peso($t['fuel_cost']) ?></td>
+          <td class="text-right whitespace-nowrap" data-sort="<?= (float) ($t['easytrip_cost'] ?? 0) ?>"><?= $peso($t['easytrip_cost']) ?></td>
+          <td class="text-right whitespace-nowrap" data-sort="<?= (float) ($t['autosweep_cost'] ?? 0) ?>"><?= $peso($t['autosweep_cost']) ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>

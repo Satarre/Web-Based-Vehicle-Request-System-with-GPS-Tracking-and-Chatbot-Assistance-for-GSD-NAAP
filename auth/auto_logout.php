@@ -11,13 +11,5 @@ if (!empty($_SESSION['last_active']) && (time() - (int) $_SESSION['last_active']
     exit;
 }
 
-if (!empty($_SESSION['user_id'])) {
-    Audit::log($pdo, 'LOGOUT', 'account:' . (int) $_SESSION['user_id']);
-    $_SESSION = [];
-    if (ini_get('session.use_cookies')) {
-        $p = session_get_cookie_params();
-        setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], (bool) $p['secure'], (bool) $p['httponly']);
-    }
-    session_destroy();
-}
+Auth::logout($pdo);
 http_response_code(204);

@@ -17,7 +17,7 @@ $u = $USER ?? null;
         <button type="button" data-theme-opt="dark" class="btn btn-sm btn-ghost flex-1">Dark</button>
       </div>
     </div>
-    <?php if ($u): ?>
+    <?php if ($u && (int) $u['role_id'] !== 7): /* GPS TRACKER accounts have their own single page */ ?>
     <div>
       <label class="form-label">My Account</label>
       <a class="flex items-center gap-2 p-2 px-2.5 rounded-lg text-app-text font-semibold text-md hover:bg-bg-page hover:no-underline no-underline" href="<?= BASE_URL ?>account/profile.php"><?= icon('users') ?> Profile &amp; Password</a>
@@ -25,7 +25,7 @@ $u = $USER ?? null;
       <a class="flex items-center gap-2 p-2 px-2.5 rounded-lg text-app-text font-semibold text-md hover:bg-bg-page hover:no-underline no-underline" href="<?= BASE_URL ?>account/trail.php"><?= icon('history') ?> Log Trail</a>
       <a class="flex items-center gap-2 p-2 px-2.5 rounded-lg text-app-text font-semibold text-md hover:bg-bg-page hover:no-underline no-underline" href="<?= BASE_URL ?>account/audit.php"><?= icon('report') ?> Audit Trail</a>
       <?php if ((int) $u['role_id'] === 1): ?>
-      <a class="flex items-center gap-2 p-2 px-2.5 rounded-lg text-app-text font-semibold text-md hover:bg-bg-page hover:no-underline no-underline" href="<?= BASE_URL ?>mis/audit.php"><?= icon('requests') ?> Activity Logs</a>
+      <a class="flex items-center gap-2 p-2 px-2.5 rounded-lg text-app-text font-semibold text-md hover:bg-bg-page hover:no-underline no-underline" href="<?= BASE_URL ?>mis/audit.php"><?= icon('requests') ?> System Audit Trail</a>
       <?php endif; ?>
     </div>
     <?php endif; ?>

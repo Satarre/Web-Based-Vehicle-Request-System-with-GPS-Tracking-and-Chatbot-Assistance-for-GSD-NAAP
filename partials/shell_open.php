@@ -10,4 +10,4 @@ require_once __DIR__ . '/sidebar.php';
 ?>
 <div class="main">
 <?php require_once __DIR__ . '/topbar.php'; ?>
-<main class="p-[18px_20px_40px]">
+<main class="main-pad">

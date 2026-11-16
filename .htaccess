@@ -3,7 +3,7 @@ Options -Indexes
 DirectoryIndex index.php auth/login.php
 
 # Block web access to internal layers entirely
-<FilesMatch "\.(sql|md|lock|json)$">
+<FilesMatch "\.(sql|md|lock|json|ini)$">
     Require all denied
 </FilesMatch>
 
@@ -12,9 +12,29 @@ DirectoryIndex index.php auth/login.php
     Require all denied
 </Files>
 
+# Force UTC+8 timezone for PHP (shared hosting safe)
+php_value date.timezone Asia/Manila
+
 # Baseline security headers
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# ── Compression (CSS/JS/JSON/SVG/HTML) ──────────────────────────────────
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml application/javascript application/json application/xml image/svg+xml
+</IfModule>
+<IfModule mod_brotli.c>
+    AddOutputFilterByType BROTLI_COMPRESS text/html text/css text/plain text/xml application/javascript application/json application/xml image/svg+xml
+</IfModule>
+
+# ── Static asset caching ────────────────────────────────────────────────
+# Assets are fingerprinted via ?v=filemtime(...), so a 1-year immutable cache
+# is safe: any edit changes the query string and re-fetches.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(css|js|jpe?g|png|webp|svg|ico|woff2)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
 </IfModule>

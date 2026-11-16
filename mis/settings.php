@@ -13,11 +13,12 @@ $sensitive = static fn(string $k): bool => (bool) preg_match('/PASS|SECRET|TOKEN
 
 /* ── Group settings by category ────────────────────────────────────── */
 $categories = [
-    'Geofence' => ['NAAP_GEOFENCE_LAT', 'NAAP_GEOFENCE_LNG', 'NAAP_GEOFENCE_RADIUS_METERS', 'GEOFENCE_GRACE_MIN'],
-    'GPS Telemetry' => ['GPS_INGESTION_URL', 'GPS_FRESH_SEC', 'GPS_DELAYED_SEC', 'GPS_MIN_INTERVAL_SEC', 'GPS_ALLOW_INSECURE_HTTP', 'RETENTION_RAW_MONTHS'],
+    'Origin Location' => ['NAAP_ORIGIN_NAME', 'NAAP_ORIGIN_LAT', 'NAAP_ORIGIN_LNG', 'NAAP_ORIGIN_PLACE_ID'],
+    'Geofence' => ['NAAP_GEOFENCE_LAT', 'NAAP_GEOFENCE_LNG', 'NAAP_GEOFENCE_RADIUS_METERS'],
+    'GPS Telemetry' => ['GPS_INGESTION_URL', 'GPS_FRESH_SEC', 'GPS_DELAYED_SEC', 'GPS_MIN_INTERVAL_SEC', 'GPS_ALLOW_INSECURE_HTTP', 'ROUTE_REFRESH_MIN', 'ROUTE_MIN_MOVE_M', 'ROUTE_DEVIATION_METERS', 'GPS_POSITION_RETENTION_DAYS', 'RETENTION_RAW_MONTHS'],
     'Trip Management' => ['MISSED_TRIP_GRACE_HOURS', 'OVERDUE_GRACE_MIN', 'STALE_REVIEW_DAYS'],
-    'Authentication & Security' => ['LOGIN_MAX_ATTEMPTS', 'LOGIN_LOCKOUT_MINS', 'OTP_TTL_MIN', 'SESSION_REGEN_INTERVAL', 'IDLE_TIMEOUT_SEC'],
-    'Email (SMTP)' => ['SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_NAME'],
+    'Authentication & Security' => ['LOGIN_MAX_ATTEMPTS', 'LOGIN_LOCKOUT_MINS', 'OTP_TTL_MIN', 'SESSION_REGEN_INTERVAL', 'IDLE_TIMEOUT_SEC', 'MFA_REQUIRED_ROLES', 'MFA_RECOMMENDED_ROLES', 'REQUIRE_EMAIL_VERIFICATION'],
+    'Email (SMTP)' => ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'SMTP_FROM_NAME'],
     'Miscellaneous' => ['UPLOAD_MAX_BYTES'],
 ];
 
@@ -40,9 +41,13 @@ if ($others) {
 $geoLat = $byKey['NAAP_GEOFENCE_LAT']['setting_value'] ?? '';
 $geoLng = $byKey['NAAP_GEOFENCE_LNG']['setting_value'] ?? '';
 $geoRad = $byKey['NAAP_GEOFENCE_RADIUS_METERS']['setting_value'] ?? '500';
+$originLat = $byKey['NAAP_ORIGIN_LAT']['setting_value'] ?? '';
+$originLng = $byKey['NAAP_ORIGIN_LNG']['setting_value'] ?? '';
+$originName = $byKey['NAAP_ORIGIN_NAME']['setting_value'] ?? '';
 $HEAD_EXTRAS =
-    '<link rel="stylesheet" href="' . BASE_URL . 'assets/js/vendor/leaflet/leaflet.css">' .
-    '<script src="' . BASE_URL . 'assets/js/vendor/leaflet/leaflet.js" defer></script>';
+    '<link rel="preconnect" href="https://maps.googleapis.com" crossorigin>' .
+    '<link rel="preconnect" href="https://maps.gstatic.com" crossorigin>' .
+    '<script>window.NAAP_MAPS_KEY=' . json_encode(GOOGLE_MAPS_API_KEY) . ';</script>';
 
 require_once dirname(__DIR__) . '/partials/layout_head.php';
 require_once dirname(__DIR__) . '/partials/shell_open.php';
@@ -53,10 +58,9 @@ $btnPrimary = 'btn btn-primary';
 ?>
 <form onsubmit="return false">
 <div class="content-card p-3.5">
-  <div class="flex items-center gap-2.5 mb-3.5">
-    <h2 class="text-lg font-bold">System Settings</h2>
+  <div class="flex flex-wrap items-center gap-2.5 mb-3.5">
     <button class="<?= $btnPrimary ?>" id="settingsSave">Save All</button>
-    <input type="search" placeholder="Filter settings…" data-filter="#tblSettings" class="<?= $searchCls ?> ml-auto w-48">
+    <input type="search" placeholder="Filter settings" data-filter="#tblSettings" class="<?= $searchCls ?> ml-auto input-search">
   </div>
   <p class="text-text-muted text-xs mb-3.5">Changes take effect immediately and are written to the audit trail. Sensitive values are masked — type a new value only when rotating.</p>
   <div class="overflow-x-auto">
@@ -65,12 +69,34 @@ $btnPrimary = 'btn btn-primary';
     <tbody>
     <?php foreach ($categories as $cat => $keys): ?>
       <tr class="category-row"><td colspan="3"><?= htmlspecialchars($cat) ?></td></tr>
+      <?php if ($cat === 'Origin Location'): ?>
+      <tr><td colspan="3" style="padding:0">
+        <div style="padding:12px">
+          <input id="originSearch" type="search" placeholder="Search for origin location" class="<?= $searchCls ?>" style="margin-bottom:8px">
+          <div id="originMap" class="map-mini"
+               data-lat="<?= htmlspecialchars($originLat) ?>"
+               data-lng="<?= htmlspecialchars($originLng) ?>"
+               data-name="<?= htmlspecialchars($originName) ?>"></div>
+        </div>
+      </td></tr>
+      <?php endif; ?>
       <?php if ($cat === 'Geofence'): ?>
       <tr><td colspan="3" style="padding:0">
         <div id="geofenceMap"
              data-lat="<?= htmlspecialchars($geoLat) ?>"
              data-lng="<?= htmlspecialchars($geoLng) ?>"
              data-radius="<?= htmlspecialchars($geoRad) ?>"></div>
+      </td></tr>
+      <?php endif; ?>
+      <?php if ($cat === 'Email (SMTP)'): ?>
+      <tr><td colspan="3" style="padding:0">
+        <div style="padding:12px">
+          <div class="flex flex-wrap items-center gap-2.5">
+            <input id="smtpTestTo" type="email" placeholder="Recipient (blank = your account email)" class="<?= $searchCls ?> input-search">
+            <button type="button" class="<?= $btnPrimary ?>" id="smtpTest">Send test email</button>
+          </div>
+          <p class="text-text-muted text-xs mt-2 mb-0"><?php if (MailService::envOverride()): ?>ENV_SMTP_* in config/secrets.php is active — the fields below are ignored while it is set.<?php else: ?>Sends using the saved values below. Save changes before testing.<?php endif; ?></p>
+        </div>
       </td></tr>
       <?php endif; ?>
       <?php foreach ($keys as $k):
@@ -87,7 +113,7 @@ $btnPrimary = 'btn btn-primary';
             <input data-setting="<?= htmlspecialchars($r['setting_key']) ?>" value="<?= htmlspecialchars((string) $r['setting_value']) ?>" class="<?= $inputCls ?>">
           <?php endif; ?>
         </td>
-        <td class="text-text-muted text-sm whitespace-nowrap"><?= htmlspecialchars((string) $r['value_type']) ?> · <?= htmlspecialchars((string) $r['description']) ?></td>
+        <td class="text-text-muted text-sm"><?= htmlspecialchars((string) $r['value_type']) ?> · <?= htmlspecialchars((string) $r['description']) ?></td>
       </tr>
       <?php endforeach; ?>
     <?php endforeach; ?>
@@ -98,5 +124,6 @@ $btnPrimary = 'btn btn-primary';
 </form>
 
 <?php
-$PAGE_SCRIPTS = ['admin.js', 'table_filter.js'];
+$VENDOR_SCRIPTS = ['maps_loader.js'];
+$PAGE_SCRIPTS = ['location-autocomplete.js', 'admin.js', 'table_filter.js'];
 require_once dirname(__DIR__) . '/partials/layout_foot.php';

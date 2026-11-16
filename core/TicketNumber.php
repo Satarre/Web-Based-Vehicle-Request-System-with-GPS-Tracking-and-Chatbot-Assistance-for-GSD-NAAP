@@ -1,9 +1,10 @@
 <?php
 declare(strict_types=1);
 /**
- * core/TicketNumber.php — DTT-YYYY-#### generator (per-year sequence).
- * Call inside the caller's transaction; the UNIQUE KEY on dtt_number plus a
- * retry loop at the call site resolves races.
+ * core/TicketNumber.php — NAAP-MN-YYYY-#### ticket-number generator.
+ * One permanent number per ticket, issued at submission (no RTT/DTT prefix
+ * promotion anymore). Call inside the caller's transaction; the UNIQUE KEY on
+ * dtt_number plus a retry loop at the call site resolves races.
  */
 
 class TicketNumber
@@ -12,11 +13,13 @@ class TicketNumber
     public static function next(PDO $pdo, ?int $year = null): string
     {
         $y    = $year ?? (int) date('Y');
+        $like = sprintf('NAAP-MN-%d-', $y);
         $stmt = $pdo->prepare(
-            'SELECT MAX(CAST(RIGHT(dtt_number, 4) AS UNSIGNED))
-             FROM trip_tickets WHERE dtt_number LIKE ?'
+            'SELECT MAX(CAST(SUBSTRING(dtt_number, LENGTH(?) + 1) AS UNSIGNED))
+             FROM trip_tickets
+             WHERE dtt_number LIKE ?'
         );
-        $stmt->execute([sprintf('DTT-%d-%%', $y)]);
-        return sprintf('DTT-%d-%04d', $y, ((int) $stmt->fetchColumn()) + 1);
+        $stmt->execute([$like, $like . '%']);
+        return $like . sprintf('%04d', ((int) $stmt->fetchColumn()) + 1);
     }
 }

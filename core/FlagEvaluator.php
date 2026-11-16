@@ -7,7 +7,7 @@ declare(strict_types=1);
  * Never mutates ticket statuses — stale trips get flagged, not completed.
  *
  * NO_TELEMETRY      → raised at dispatch override (api/trips.php assign)
- * GEOFENCE_DEVIATION→ raised by GpsIngest pipeline
+ * GEOFENCE_DEVIATION→ raised at start/complete (api/trips.php)
  * OVERDUE / MISSED_TRIP / GPS_SIGNAL_LOST / NEEDS_REVIEW → here, cron ~5 min
  * DRAFT_PURGE       → deletes DRAFT tickets older than 3 days
  */
@@ -20,6 +20,8 @@ final class FlagEvaluator
         $graceMissed   = max(0, Settings::getInt('MISSED_TRIP_GRACE_HOURS', 2));
         $delayedSec    = max(0, Settings::getInt('GPS_DELAYED_SEC', 120));
         $staleDays     = max(0, Settings::getInt('STALE_REVIEW_DAYS', 3));
+        $stillKph      = max(0, Settings::getInt('IDLE_STILL_KPH', 5));
+        $idleMin       = max(1, Settings::getInt('IDLE_STILL_MINUTES', 15));
 
         $rules = [
             'OVERDUE' => [
@@ -41,6 +43,15 @@ final class FlagEvaluator
                                AND (d.last_seen_at IS NULL
                                     OR d.last_seen_at < NOW() - INTERVAL {$delayedSec} SECOND))",
                 "'Paired device telemetry stale during active trip'",
+            ],
+            'IDLE_DETECTED' => [
+                "t.status_id = " . TripState::ON_GOING . " AND t.is_active = 1
+                 AND EXISTS (SELECT 1 FROM gps_positions p
+                             WHERE p.ticket_id = t.ticket_id
+                               AND p.recorded_at >= NOW() - INTERVAL {$idleMin} MINUTE
+                             HAVING COUNT(*) >= 5
+                                AND COALESCE(MAX(COALESCE(p.speed_kph, 0)), 0) < {$stillKph})",
+                "CONCAT('Vehicle idle (speed < ', {$stillKph}, ' kph) for over ', {$idleMin}, ' min')",
             ],
             'NEEDS_REVIEW' => [
                 "t.status_id BETWEEN 2 AND 6 AND t.is_active = 1
@@ -65,18 +76,24 @@ final class FlagEvaluator
             $raised[$type] = $st->rowCount();
         }
 
-        // DRAFT auto-purge: hard-delete DRAFT tickets older than 3 days
+        // DRAFT auto-purge: hard-delete trip_drafts (private scratchpads, not
+        // real tickets) untouched for 3 days, including their request letters.
+        // "Untouched" = updated_at when present, else created_at, so a draft
+        // that is still being edited is never deleted mid-session.
         $drafts = $pdo->query(
-            "SELECT ticket_id FROM trip_tickets
-             WHERE status_id = " . TripState::DRAFT . " AND is_active = 1
-               AND created_at < NOW() - INTERVAL 3 DAY"
-        )->fetchAll(PDO::FETCH_COLUMN);
+            "SELECT draft_id, attachment_path FROM trip_drafts
+             WHERE COALESCE(updated_at, created_at) < NOW() - INTERVAL 3 DAY"
+        )->fetchAll();
         if ($drafts) {
-            $ids = implode(',', array_map('intval', $drafts));
-            foreach (['trip_passengers','guard_verifications','trip_flags','gps_positions','geofence_events','feedback'] as $tbl) {
-                $pdo->exec("DELETE FROM $tbl WHERE ticket_id IN ($ids)");
+            $ids = implode(',', array_map(static fn(array $d): int => (int) $d['draft_id'], $drafts));
+            foreach ($drafts as $d) {
+                $full = APP_ROOT . '/' . ltrim((string) $d['attachment_path'], '/');
+                if (!empty($d['attachment_path']) && str_starts_with($full, APP_ROOT . '/uploads/') && is_file($full)) {
+                    @unlink($full);
+                }
             }
-            $pdo->exec("DELETE FROM trip_tickets WHERE ticket_id IN ($ids)");
+            $pdo->exec("DELETE FROM trip_draft_passengers WHERE draft_id IN ($ids)");
+            $pdo->exec("DELETE FROM trip_drafts WHERE draft_id IN ($ids)");
             $raised['DRAFT_PURGE'] = count($drafts);
         }
 

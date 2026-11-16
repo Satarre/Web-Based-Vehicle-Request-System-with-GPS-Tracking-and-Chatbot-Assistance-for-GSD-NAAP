@@ -26,7 +26,10 @@ function icon(string $name): string
         'cloud'     => '<path d="M7 18a4.5 4.5 0 01-.4-9A6 6 0 0119 11a3.5 3.5 0 011 6.9M8 13l4-4m0 0l4 4m-4-4v9" fill="none" stroke="currentColor" stroke-width="2"/>',
         'file'      => '<path d="M6 3h8l4 4v14a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M14 3v4h4M9 12h6M9 16h6" fill="none" stroke="currentColor" stroke-width="2"/>',
         'trash'     => '<path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13M10 11v6m4-6v6" fill="none" stroke="currentColor" stroke-width="2"/>',
+        'edit'      => '<path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5zM13 7l4 4" fill="none" stroke="currentColor" stroke-width="2"/>',
         'info'      => '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8h.01M12 11v5" stroke="currentColor" stroke-width="2"/>',
+        'eye'       => '<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>',
+        'eye-off'   => '<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="2"/>',
     ];
     return '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' . ($icons[$name] ?? '') . '</svg>';
 }

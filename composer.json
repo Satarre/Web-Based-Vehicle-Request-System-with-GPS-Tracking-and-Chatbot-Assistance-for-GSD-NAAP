@@ -1,0 +1,12 @@
+{
+    "name": "naap/vts-capstone",
+    "description": "NAAP GSD Digital Trip Ticket System",
+    "type": "project",
+    "require": {
+        "phpmailer/phpmailer": "^6.9"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}

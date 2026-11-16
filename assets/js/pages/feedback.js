@@ -14,7 +14,7 @@
         action: 'feedback_save', ticket_id: ticketId, details,
       });
       UI.toast(res.message || 'Feedback submitted.', 'success');
-      setTimeout(() => location.reload(), 600);
+      setTimeout(() => location.reload(), 1200);
     } catch (e) {
       UI.toast(e.message, 'error');
       btn.disabled = false;

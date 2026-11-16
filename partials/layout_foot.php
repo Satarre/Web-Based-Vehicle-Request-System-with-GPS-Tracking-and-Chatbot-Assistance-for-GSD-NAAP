@@ -16,8 +16,8 @@ $keepSession = !empty($KEEP_SESSION) ? '1' : '0';
     <div class="modal-head"><span>Confirm</span>
       <button class="modal-close" type="button" onclick="UI.modal('confirmModal', false)"><?= function_exists('icon') ? icon('x') : '×' ?></button>
     </div>
-    <div class="px-[18px] py-4"><p id="confirmMessage" class="m-0 font-semibold">Are you sure?</p></div>
-    <div class="px-[18px] py-3 border-t border-border flex justify-end gap-2">
+    <div class="modal-pad-x py-4"><p id="confirmMessage" class="m-0 font-semibold">Are you sure?</p></div>
+    <div class="modal-pad-x py-3 border-t border-border flex justify-end gap-2">
       <button class="btn btn-ghost" id="confirmCancel" type="button">Cancel</button>
       <button class="btn btn-primary" id="confirmOk" type="button">Confirm</button>
     </div>
@@ -32,12 +32,26 @@ $assetV = static fn(string $f): string => BASE_URL . 'assets/js/' . $f . '?v=' .
 <script src="<?= $assetV('api.js') ?>"></script>
 <script src="<?= $assetV('ui.js') ?>"></script>
 <script src="<?= $assetV('settings.js') ?>"></script>
+<script src="<?= $assetV('select.js') ?>"></script>
 <script src="<?= $assetV('TrackingClient.js') ?>"></script>
-<script src="<?= $assetV('session_guard.js') ?>"></script>
+<script src="<?= $assetV('SSEClient.js') ?>"></script>
 <script src="<?= $assetV('idle.js') ?>"></script>
+<script src="<?= $assetV('skeleton.js') ?>"></script>
 <script src="<?= $assetV('pages/table_pager.js') ?>"></script>
+<?php foreach (($VENDOR_SCRIPTS ?? []) as $s): ?>
+<script src="<?= $assetV($s) ?>"></script>
+<?php endforeach; ?>
 <?php foreach (($PAGE_SCRIPTS ?? []) as $s): ?>
 <script src="<?= BASE_URL ?>assets/js/pages/<?= htmlspecialchars($s) ?>?v=<?= filemtime(dirname(__DIR__) . '/assets/js/pages/' . $s) ?>"></script>
 <?php endforeach; ?>
+<script>
+/* ── SSE real-time updates (only on pages that opt in via $ENABLE_LIVE) ── */
+if (typeof SSEClient !== 'undefined' && <?= !empty($ENABLE_LIVE) ? 'true' : 'false' ?>) {
+  SSEClient.start(
+    function onNotification(data) { /* toast already shown by SSEClient */ },
+    function onBadgeUpdate(data) { /* badges already updated by SSEClient */ }
+  );
+}
+</script>
 </body>
 </html>

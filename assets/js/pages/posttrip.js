@@ -8,6 +8,7 @@
     const odoStartEl = $('f_odometer_start');
     const odoStart = odoStartEl && !odoStartEl.disabled ? parseFloat(odoStartEl.value) : null;
     if (odoStartEl && !odoStartEl.disabled && (isNaN(odoStart) || odoStart < 0)) return UI.toast('Odometer start reading is required.', 'err');
+    if (!(await UI.confirmDialog({ message: 'Submit this post-trip report? This completes the trip.', okLabel: 'Submit', danger: true }))) return;
     try {
       const payload = {
         action: 'submit_posttrip',

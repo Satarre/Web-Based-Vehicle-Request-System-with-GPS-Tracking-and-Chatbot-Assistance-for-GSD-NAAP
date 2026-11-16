@@ -28,7 +28,7 @@ require_once dirname(__DIR__) . '/partials/shell_open.php';
 $c = [
     'title' => 'Submissions',
     'id' => 'tblFeedback',
-    'filter' => 'Search feedback…',
+    'filter' => 'Search feedback',
     'columns' => ['Ticket', 'Submitter', 'Details', 'Submitted', ''],
     'rows' => array_map(fn($r) => [
         $r['dtt_number'] ? '<strong>' . htmlspecialchars((string) $r['dtt_number']) . '</strong>' : '#' . (int) $r['ticket_id'],

@@ -7,12 +7,15 @@ require_once dirname(__DIR__) . '/config/config.php';
 $USER   = Auth::requirePage($pdo, [3]);
 $ACTIVE = BASE_URL . 'staff/assignments.php';
 $PAGE_TITLE = 'Assignments';
+$ENABLE_LIVE = true;
+
+TripGuard::autoRejectPastDue($pdo);
 
 $fmt = static fn(?string $d): string => $d ? date('M j, Y g:i A', strtotime($d)) : '—';
 $toLocal = static fn(?string $d): string => $d ? substr(str_replace(' ', ' ', $d), 0, 16) : '';
 
 $queue = $pdo->query(
-    "SELECT t.ticket_id, t.passenger_name, t.place_to_visit, t.number_of_passengers,
+    "SELECT t.ticket_id, t.passenger_name, t.surname, t.middle_initial, t.suffix, t.place_to_visit, t.number_of_passengers,
             t.scheduled_departure, t.scheduled_return, c.full_name AS requester
      FROM trip_tickets t LEFT JOIN account c ON c.account_id = t.created_by
      WHERE t.status_id = " . TripState::APPROVED . " AND t.is_active = 1
@@ -20,7 +23,7 @@ $queue = $pdo->query(
 )->fetchAll();
 
 $assigned = $pdo->query(
-    "SELECT t.ticket_id, t.dtt_number, t.passenger_name,
+    "SELECT t.ticket_id, t.dtt_number, t.passenger_name, t.surname, t.middle_initial, t.suffix,
             t.scheduled_departure, t.scheduled_return,
             v.plate_number, d.full_name AS driver_name
      FROM trip_tickets t
@@ -42,6 +45,22 @@ $drivers = $pdo->query(
     "SELECT account_id, full_name FROM account WHERE role_id = 4 AND is_active = 1 ORDER BY full_name"
 )->fetchAll();
 
+/* ── Busy windows (DISPATCHED/ON_GOING) for in-modal selection filtering ── */
+$busyWindows = $pdo->query(
+    "SELECT vehicle_id, driver_id, scheduled_departure, scheduled_return
+     FROM trip_tickets
+     WHERE is_active = 1
+       AND status_id IN (" . TripState::DISPATCHED . ", " . TripState::ON_GOING . ")
+       AND scheduled_departure IS NOT NULL AND scheduled_return IS NOT NULL"
+)->fetchAll();
+$busyVeh = [];
+$busyDrv = [];
+foreach ($busyWindows as $bw) {
+    if (!empty($bw['vehicle_id'])) { $busyVeh[(int) $bw['vehicle_id']][] = [$bw['scheduled_departure'], $bw['scheduled_return']]; }
+    if (!empty($bw['driver_id']))  { $busyDrv[(int) $bw['driver_id']][]  = [$bw['scheduled_departure'], $bw['scheduled_return']]; }
+}
+$busyJson = static fn(array $w): string => htmlspecialchars(json_encode($w), ENT_QUOTES);
+
 $openId = (int) ($_GET['ticket_id'] ?? 0);
 
 $PAGE_SCRIPTS = ['assignments.js'];
@@ -49,20 +68,30 @@ require_once dirname(__DIR__) . '/partials/layout_head.php';
 require_once dirname(__DIR__) . '/partials/shell_open.php';
 ?>
 <?php
+$paxName = static function (array $t): string {
+    $first = trim((string) ($t['passenger_name'] ?? ''));
+    $mi    = strtoupper(trim((string) ($t['middle_initial'] ?? '')));
+    $sur   = trim((string) ($t['surname'] ?? ''));
+    $suf   = trim((string) ($t['suffix'] ?? ''));
+    $name  = $sur ? $sur . ', ' . $first : $first;
+    if ($mi) $name .= ' ' . $mi . '.';
+    if ($suf) $name .= ' ' . $suf;
+    return $name;
+};
 $c = [
     'title' => 'Approved — Awaiting Assignment',
     'sub' => count($queue),
     'id' => 'tblQueue',
     'columns' => ['Approved', 'Requester', 'Passenger', 'Destination', 'Requested Schedule', 'Pax', ''],
-    'rows' => array_map(function ($t) use ($fmt, $toLocal) {
+    'rows' => array_map(function ($t) use ($fmt, $toLocal, $paxName) {
         return [
             $fmt($t['scheduled_departure']),
             htmlspecialchars((string) $t['requester']),
-            htmlspecialchars($t['passenger_name']),
+            htmlspecialchars($paxName($t)),
             htmlspecialchars(mb_strimwidth($t['place_to_visit'], 0, 30, '…')),
             $fmt($t['scheduled_departure']) . ' → ' . $fmt($t['scheduled_return']),
             (string) (int) $t['number_of_passengers'],
-            '<span class="whitespace-nowrap"><a class="btn btn-sm btn-ghost" href="' . BASE_URL . 'ticket.php?id=' . $t['ticket_id'] . '">View</a> <button class="btn btn-sm btn-primary" data-assign="' . $t['ticket_id'] . '" data-dep="' . $toLocal($t['scheduled_departure']) . '" data-ret="' . $toLocal($t['scheduled_return']) . '">Assign…</button></span>',
+            '<span class="whitespace-nowrap"><a class="btn btn-sm btn-ghost" href="' . BASE_URL . 'ticket.php?id=' . $t['ticket_id'] . '">View</a> <button class="btn btn-sm btn-primary" data-assign="' . $t['ticket_id'] . '" data-dep="' . htmlspecialchars($toLocal($t['scheduled_departure'])) . '" data-ret="' . htmlspecialchars($toLocal($t['scheduled_return'])) . '">Assign</button></span>',
         ];
     }, $queue),
     'empty' => 'Nothing awaiting assignment.',
@@ -76,11 +105,11 @@ $c = [
 $c = [
     'title' => 'Dispatched — Awaiting Trip Start',
     'id' => 'tblAssigned',
-    'columns' => ['DTT', 'Passenger', 'Driver', 'Vehicle', 'Schedule', ''],
-    'rows' => array_map(function ($t) use ($fmt) {
+    'columns' => ['Ticket No.', 'Passenger', 'Driver', 'Vehicle', 'Schedule', ''],
+    'rows' => array_map(function ($t) use ($fmt, $paxName) {
         return [
             '<strong>' . htmlspecialchars((string) $t['dtt_number']) . '</strong>',
-            htmlspecialchars($t['passenger_name']),
+            htmlspecialchars($paxName($t)),
             htmlspecialchars((string) $t['driver_name']),
             htmlspecialchars((string) $t['plate_number']),
             $fmt($t['scheduled_departure']) . ' → ' . $fmt($t['scheduled_return']),
@@ -104,7 +133,7 @@ $labelCls = 'form-label';
       <span>Assign Driver &amp; Vehicle</span>
       <button class="modal-close" type="button" onclick="UI.modal('assignModal', false)"><?= icon('x') ?></button>
     </div>
-    <div class="px-[18px] py-4">
+    <div class="modal-pad-x py-4">
       <input type="hidden" id="asTicketId">
       <div class="grid gap-3" style="grid-template-columns:1fr">
         <div>
@@ -112,7 +141,7 @@ $labelCls = 'form-label';
           <select id="asVehicle" class="<?= $inputCls ?>">
             <option value="">— select —</option>
             <?php foreach ($vehicles as $v): ?>
-              <option value="<?= $v['vehicle_id'] ?>" data-paired="<?= (int) $v['paired'] ?>">
+              <option value="<?= $v['vehicle_id'] ?>" data-paired="<?= (int) $v['paired'] ?>" data-busy="<?= $busyJson($busyVeh[(int) $v['vehicle_id']] ?? []) ?>">
                 <?= htmlspecialchars("{$v['plate_number']} · {$v['brand']} {$v['model_name']} ({$v['capacity']} pax)") ?>
                 <?= $v['paired'] ? '' : ' · NO GPS' ?>
               </option>
@@ -124,7 +153,7 @@ $labelCls = 'form-label';
           <select id="asDriver" class="<?= $inputCls ?>">
             <option value="">— select —</option>
             <?php foreach ($drivers as $d): ?>
-              <option value="<?= $d['account_id'] ?>"><?= htmlspecialchars($d['full_name']) ?></option>
+              <option value="<?= $d['account_id'] ?>" data-busy="<?= $busyJson($busyDrv[(int) $d['account_id']] ?? []) ?>"><?= htmlspecialchars($d['full_name']) ?></option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -145,9 +174,9 @@ $labelCls = 'form-label';
         </div>
       </div>
     </div>
-    <div class="px-[18px] py-3 border-t border-border flex justify-end gap-2">
+    <div class="modal-pad-x py-3 border-t border-border flex justify-end gap-2">
       <button class="<?= $cancelCls ?>" type="button" onclick="UI.modal('assignModal', false)">Cancel</button>
-      <button class="<?= $okCls ?>" type="button" id="asOk">Assign &amp; Issue DTT</button>
+      <button class="<?= $okCls ?>" type="button" id="asOk">Assign &amp; Dispatch</button>
     </div>
   </div>
 </div>

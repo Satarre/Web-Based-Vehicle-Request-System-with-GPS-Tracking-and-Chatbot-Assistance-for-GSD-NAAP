@@ -19,6 +19,16 @@ if (!is_array($in)) {
 
 $clip = static fn(mixed $v, int $n): ?string => $v === null || $v === '' ? null : mb_substr((string) $v, 0, $n);
 
+// Per-IP cap so an unauthenticated flood cannot fill audit_trail.
+$st = $pdo->prepare(
+    'SELECT COUNT(*) FROM audit_trail
+     WHERE event_type = ? AND ip_address = ? AND timestamp > (NOW() - INTERVAL 60 SECOND)'
+);
+$st->execute(['ERROR', SecurityEvent::ip()]);
+if ((int) $st->fetchColumn() >= 30) {
+    exit;
+}
+
 $action  = $clip($in['action'] ?? null, 80)        ?? 'UNKNOWN';
 $type    = $clip($in['error_type'] ?? null, 20)    ?? 'JS_ERROR';
 $message = $clip($in['error_message'] ?? null, 500) ?? '';

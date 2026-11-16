@@ -1,15 +1,16 @@
-/* approvals.js — HR verify / reject from the director queue. */
+/* approvals.js — approve/reject reason flow for the SAO approval queue. */
 (function () {
   'use strict';
   let targetId = null;
 
   document.addEventListener('click', async (e) => {
-    const ap = e.target.closest('[data-approve]');
+    const btn = e.target.closest('[data-approve]');
     const rj = e.target.closest('[data-reject]');
-    if (ap) {
-      if (await UI.confirmDialog({ message: 'Verify this request? It will go to GSD Staff for approval.', okLabel: 'Verify' })) {
+    if (btn) {
+      const message = 'Approve this trip request? It will go to the GSD Dispatcher for dispatch.';
+      if (await UI.confirmDialog({ message, okLabel: 'Approve' })) {
         try {
-          const r = await API.post('api/trips.php', { action: 'hr_verify', ticket_id: ap.dataset.approve });
+          const r = await API.post('api/trips.php', { action: 'approve', ticket_id: btn.dataset.approve });
           UI.toast(r.message, 'ok');
           setTimeout(() => location.reload(), 600);
         } catch (err) { UI.toast(err.message, 'err'); }

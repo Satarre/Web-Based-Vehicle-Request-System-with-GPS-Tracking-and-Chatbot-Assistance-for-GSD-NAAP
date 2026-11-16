@@ -26,7 +26,7 @@ $PAGE_SCRIPTS = ['table_filter.js'];
 <?php
 $c = [
     'id' => 'tblGuardHist',
-    'filter' => 'Search verifications…',
+    'filter' => 'Search verifications',
     'columns' => ['Ticket', 'Vehicle', 'Phase', 'Result', 'Notes', 'At'],
     'rows' => array_map(fn($g) => [
         '<strong>' . ($g['dtt_number'] ? htmlspecialchars($g['dtt_number']) : '#' . (int) $g['ticket_id']) . '</strong>',

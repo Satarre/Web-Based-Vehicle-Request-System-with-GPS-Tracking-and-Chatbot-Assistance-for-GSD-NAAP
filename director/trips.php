@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * director/trips.php — HR trip ticket listing with clickable stat card filters.
+ * director/trips.php — SAO trip ticket listing with clickable stat card filters.
  */
 require_once dirname(__DIR__) . '/config/config.php';
 $USER   = Auth::requirePage($pdo, [2]);
@@ -14,7 +14,7 @@ $orDash = static fn($v): string => $v === null || $v === '' ? '—' : htmlspecia
 
 /* ── Status counts ── */
 $counts = [];
-$st = $pdo->query('SELECT status_id, status_name FROM request_status ORDER BY status_id');
+$st = $pdo->query('SELECT status_id, status_name FROM request_status WHERE is_active = 1 ORDER BY status_id');
 foreach ($st->fetchAll() as $r) {
     $counts[(int) $r['status_id']] = ['name' => $r['status_name'], 'count' => 0];
 }
@@ -38,12 +38,14 @@ if ($filterStatus > 0 && isset($counts[$filterStatus])) {
 $q = trim((string) ($_GET['q'] ?? ''));
 if ($q !== '') {
     $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
-    $where .= ' AND (t.dtt_number LIKE :qs1 OR t.passenger_name LIKE :qs2 OR t.place_to_visit LIKE :qs3 OR c.full_name LIKE :qs4 OR v.plate_number LIKE :qs5)';
-    foreach (['qs1','qs2','qs3','qs4','qs5'] as $k) { $args[$k] = $like; }
+    $where .= ' AND (t.dtt_number LIKE :qs1 OR t.passenger_name LIKE :qs2 OR t.surname LIKE :qs6
+                 OR t.place_to_visit LIKE :qs3 OR c.full_name LIKE :qs4 OR v.plate_number LIKE :qs5
+                 OR r.status_name LIKE :qs7 OR t.scheduled_departure LIKE :qs8 OR t.scheduled_return LIKE :qs9)';
+    foreach (['qs1','qs2','qs3','qs4','qs5','qs6','qs7','qs8','qs9'] as $k) { $args[$k] = $like; }
 }
 
 $st = $pdo->prepare(
-    "SELECT t.ticket_id, t.dtt_number, t.passenger_name, t.place_to_visit,
+    "SELECT t.ticket_id, t.dtt_number, t.passenger_name, t.surname, t.middle_initial, t.suffix, t.place_to_visit,
             t.number_of_passengers, t.scheduled_departure, t.scheduled_return,
             t.submitted_at, t.status_id, r.status_name,
             c.full_name AS requester, COALESCE(v.plate_number, '—') AS plate
@@ -65,7 +67,7 @@ require_once dirname(__DIR__) . '/partials/shell_open.php';
 </div>
 
 <!-- Stat cards -->
-<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 mb-3.5">
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 mb-3.5 stagger-in">
   <a class="stat-card<?= $filterStatus === 0 ? ' is-filtered' : '' ?>" data-stat="all" href="?<?= htmlspecialchars(http_build_query(['q' => $q])) ?>">
     <div class="stat-card-label">TOTAL</div>
     <div class="stat-card-value"><?= $totalCount ?></div>
@@ -79,9 +81,9 @@ require_once dirname(__DIR__) . '/partials/shell_open.php';
 </div>
 
 <!-- Search -->
-<form method="get" class="flex gap-1.5 mb-3">
-  <?php if ($filterStatus > 0): ?><input type="hidden" name="status" value="<?= $filterStatus ?>"><?php endif; ?>
-  <input class="w-60" type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search DTT, passenger, destination…">
+  <form method="get" class="flex flex-wrap gap-1.5 mb-3">
+    <?php if ($filterStatus > 0): ?><input type="hidden" name="status" value="<?= $filterStatus ?>"><?php endif; ?>
+      <input class="input-search-lg min-w-0" type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search ticket, passenger, destination, schedule, status">
   <button class="btn btn-sm btn-primary">Search</button>
   <?php if ($q !== '' || $filterStatus > 0): ?>
     <a class="btn btn-sm btn-ghost" href="<?= BASE_URL ?>director/trips.php">Clear</a>
@@ -89,19 +91,27 @@ require_once dirname(__DIR__) . '/partials/shell_open.php';
 </form>
 
 <?php
-$rows = array_map(function ($t) use ($when) {
-    $cancellable = in_array((int) $t['status_id'], [TripState::DRAFT, TripState::PENDING, TripState::APPROVED, TripState::DISPATCHED], true);
+$paxName = static function (array $t): string {
+    $first = trim((string) ($t['passenger_name'] ?? ''));
+    $mi    = strtoupper(trim((string) ($t['middle_initial'] ?? '')));
+    $sur   = trim((string) ($t['surname'] ?? ''));
+    $suf   = trim((string) ($t['suffix'] ?? ''));
+    $name  = $sur ? $sur . ', ' . $first : $first;
+    if ($mi) $name .= ' ' . $mi . '.';
+    if ($suf) $name .= ' ' . $suf;
+    return $name;
+};
+$rows = array_map(function ($t) use ($when, $paxName) {
     return [
         '<strong>' . htmlspecialchars($t['dtt_number'] ?? ('#' . $t['ticket_id'])) . '</strong>',
         htmlspecialchars((string) $t['requester']),
-        htmlspecialchars($t['passenger_name']),
-        htmlspecialchars(mb_strimwidth($t['place_to_visit'], 0, 30, '…')),
+        htmlspecialchars($paxName($t)),
+        htmlspecialchars((string) $t['place_to_visit']),
         '<div class="leading-normal"><div>' . $when($t['scheduled_departure']) . '</div><small class="text-xs font-bold tracking-wide text-text-muted">RET · ' . $when($t['scheduled_return']) . '</small></div>',
         (string) (int) $t['number_of_passengers'],
         htmlspecialchars((string) $t['plate']),
         '<span class="badge badge-' . strtolower(str_replace('_', '-', $t['status_name'])) . '">' . htmlspecialchars($t['status_name']) . '</span>',
-        '<span class="whitespace-nowrap"><a class="btn btn-sm btn-ghost" href="' . BASE_URL . 'ticket.php?id=' . $t['ticket_id'] . '">View</a>'
-        . ($cancellable ? ' <button class="btn btn-sm btn-danger" data-cancel="' . $t['ticket_id'] . '">Cancel…</button>' : '') . '</span>',
+        '<span class="whitespace-nowrap"><a class="btn btn-sm btn-ghost" href="' . BASE_URL . 'ticket.php?id=' . $t['ticket_id'] . '">View</a></span>',
     ];
 }, $tickets);
 $c = [
@@ -114,7 +124,5 @@ include __DIR__ . '/../partials/ui/table.php';
 ?>
 
 <?php
-$RM_ID = 'cancelModal'; $RM_TITLE = 'Cancel Ticket'; $RM_OK = 'Cancel Ticket'; $RM_DANGER = true;
-require_once dirname(__DIR__) . '/partials/reason_modal.php';
-$PAGE_SCRIPTS = ['director_trips.js'];
+$PAGE_SCRIPTS = ['table_filter.js'];
 require_once dirname(__DIR__) . '/partials/layout_foot.php';
