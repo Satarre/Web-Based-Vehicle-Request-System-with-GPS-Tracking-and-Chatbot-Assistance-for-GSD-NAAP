@@ -1,9 +1,88 @@
-node_modules/
-npm-debug.log
-uploads/
-*.log
+# ---------------------------------------------------------------------------
+# AI / local dev tooling (machine-specific, not part of the app)
+# ---------------------------------------------------------------------------
+.opencode/
+.playwright/
 .playwright-mcp/
+AGENTS.md
 opencode.json
 .mcp.json
+
+# ---------------------------------------------------------------------------
+# Dependencies (restored by `npm ci` / `composer install` on deploy)
+# ---------------------------------------------------------------------------
+node_modules/
+vendor/
+composer.phar
+npm-debug.log
+yarn-error.log
+
+# ---------------------------------------------------------------------------
+# Local secrets & environment config (never commit)
+# ---------------------------------------------------------------------------
+config/secrets.php
+config/mfa_toggle.php
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Runtime data: uploaded request letters / attachments
+# ---------------------------------------------------------------------------
+uploads/
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+*.log
+
+# ---------------------------------------------------------------------------
+# OS junk
+# ---------------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# ---------------------------------------------------------------------------
+# Editor / IDE junk
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.iml
+
+# ---------------------------------------------------------------------------
+# Temporary, backup and merge-leftover files
+# ---------------------------------------------------------------------------
+*.bak
+*.orig
+*.old
+*.save
+*.tmp
+*.temp
+*.rej
+*.stackdump
+**/* copy.*
+
+# ---------------------------------------------------------------------------
+# Images: binary assets are opted in explicitly (existing tracked images keep
+# working; a new image under assets/img needs `git add -f`)
+# ---------------------------------------------------------------------------
 *.png
 !assets/img/*.png
+
+# ---------------------------------------------------------------------------
+# Unescessary Shit
+# ---------------------------------------------------------------------------
+INSTRUCTIONS/
+README/
+SYSTEM MANUAL/
+HANDOFF.md
+HANDOFF_MIGRATION.md
+IMPLEMENT.md
+docs/
+database/
+hardware/
