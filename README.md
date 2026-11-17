@@ -1,6 +1,6 @@
 # NAAP GSD Digital Trip Ticket System
 
-Official vehicle request and tracking system for the **National Aviation Academy of the Philippines — General Services Division (GSD)**. Replaces manual paper-based trip tickets with a fully digital workflow: request submission, multi-level approval, GPS-tracked dispatch, post-trip reporting, and audit logging.
+Vehicle request and tracking system for the **National Aviation Academy of the Philippines - General Services Division (GSD)**. Replaces manual paper-based trip tickets with a fully digital workflow: request submission, multi-level approval, GPS-tracked dispatch, post-trip reporting, and audit logging.
 
 **Stack:** PHP 8.2 · MariaDB 10.4 · Tailwind CSS v4 · Google Maps JS + Places · PHPMailer (Composer) · XAMPP (Windows)
 
